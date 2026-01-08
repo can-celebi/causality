@@ -1,28 +1,43 @@
-# Causality Course Materials
+# Impact Evaluation: Policy Applications with R - R Session Materials
 
-This repository contains R templates and exercises for the causality course.
+This repository contains R templates and exercises for the course "Impact Evaluation: Policy Applications with R".
+
+## Quick Links
+
+- **📚 Course Materials**: https://can-celebi.github.io/causality/
+- **📥 Download Session 1**: Available on the [course website](https://can-celebi.github.io/causality/)
 
 ## Getting Started
 
-You can access these materials in two ways:
-- **Download**: Download the repository directly from the course website
+You can access these materials in multiple ways:
+- **Browse on Web**: Visit https://can-celebi.github.io/causality/ for the course landing page with direct download
+- **Download**: Download Session 1 materials (R/session1/) directly from the course website
 - **Clone**: If you're familiar with Git, clone the repository:
   ```
-  git clone <repository-url>
+  git clone https://github.com/can-celebi/causality.git
+  cd causality
   ```
 
 ## Session Materials
 
 **Currently available**: Session 1
 
-We have three templates for Session 1, covering the same concepts with different datasets:
-- **Titanic theme**: Classic Titanic dataset
-- **Various datasets**: Multiple different datasets
-- **No dataset theme**: Made-up student coffee drinking data
+### Session 1 Templates
+
+Session 1 materials are located in `R/session1/`. We provide multiple templates covering the same R fundamentals concepts with different datasets:
+
+- **Titanic theme** (`R/session1/titanic/`): Classic Titanic passenger dataset
+- **Mixed datasets** (`R/session1/mix/`): Spotify, Adult, Star Wars, and other real-world datasets
+- **Base template** (`R/session1/`): Student data examples
 
 Each template comes with:
-1. A template R file for you to complete during the session
-2. An answer key R file with solutions
+1. A **template R file** for you to complete during the session
+2. An **answer key R file** with solutions to check your work
+3. A **cheatsheet** with common functions and patterns (where available)
+
+### Previous Versions
+
+Earlier versions of Session 1 templates are archived in `R/session1/archive/` for reference.
 
 More sessions will be added throughout the semester as we progress through the course.
 

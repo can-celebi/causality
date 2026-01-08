@@ -42,6 +42,20 @@ body {
   opacity: 0.95;
 }
 
+.back-link-hero {
+  display: inline-block;
+  color: white;
+  text-decoration: none;
+  font-size: 0.95rem;
+  opacity: 0.8;
+  transition: opacity 0.2s;
+  margin-bottom: 20px;
+}
+
+.back-link-hero:hover {
+  opacity: 1;
+}
+
 /* Main Content */
 .main-content {
   padding: 60px 20px;

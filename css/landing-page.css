@@ -247,6 +247,52 @@ footer p {
   font-size: 0.9rem;
 }
 
+/* New Badge with Animation */
+.new-badge {
+  position: absolute;
+  top: -12px;
+  right: -12px;
+  background: linear-gradient(135deg, #ff6b6b 0%, #ff8787 100%);
+  color: white;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(255, 107, 107, 0.3);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  animation: pulse-badge 2s ease-in-out infinite;
+}
+
+.star-icon {
+  display: inline-block;
+  animation: twinkle 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-badge {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 2px 8px rgba(255, 107, 107, 0.3);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(255, 107, 107, 0.5);
+  }
+}
+
+@keyframes twinkle {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(0.8);
+  }
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .hero h1 {
@@ -276,6 +322,14 @@ footer p {
 
   section h2 {
     font-size: 1.5rem;
+  }
+
+  .new-badge {
+    position: relative;
+    top: 0;
+    right: 0;
+    margin-top: 15px;
+    font-size: 0.7rem;
   }
 }
 

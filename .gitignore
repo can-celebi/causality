@@ -20,6 +20,10 @@ Session\ 1.5\ \(optional\ session\)/textbook.pdf
 Session\ 1.5\ \(optional\ session\)/R/input/
 Session\ 1.5\ \(optional\ session\)/R/output/
 Session\ 1.5\ \(optional\ session\)/R/Rplots.pdf
+Session\ 1.5\ \(optional\ session\)/R/03_dag_analysis.R
+Session\ 1.5\ \(optional\ session\)/R/04_randomization_simulation.R
+Session\ 1.5\ \(optional\ session\)/R/causal_graphs_concepts.md
+Session\ 1.5\ \(optional\ session\)/R/foundation.md
 
 # General R files
 *.Rhistory

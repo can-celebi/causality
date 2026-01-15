@@ -20,6 +20,8 @@ document.addEventListener('DOMContentLoaded', function() {
   updateNavButtons();
 });
 
+let answersShown = false;
+
 // ============================================================================
 // Load and Display Scenario
 // ============================================================================
@@ -43,11 +45,95 @@ function loadScenario(index) {
   // Render questions
   renderQuestions(scenario);
 
+  // Render answers section (but keep hidden until requested)
+  renderAnswers(scenario, index);
+
+  // Reset answers visibility
+  answersShown = false;
+  document.getElementById('answers-section').style.display = 'none';
+  const showBtn = document.getElementById('show-all-answers');
+  showBtn.textContent = 'Show Full Answer';
+  showBtn.classList.remove('answered');
+
   // Update nav buttons
   updateNavButtons();
 
   // Scroll to top
   window.scrollTo(0, 0);
+}
+
+// ============================================================================
+// Render Full Answers
+// ============================================================================
+
+function renderAnswers(scenario, scenarioIndex) {
+  const answers = scenarioAnswers[scenarioIndex];
+
+  // Causal description
+  document.getElementById('causal-description').innerHTML = answers.causalStructureDescription;
+
+  // DAG image
+  document.getElementById('dag-image').src = answers.dagImage;
+  document.getElementById('dag-image').alt = scenario.title + ' - Causal DAG';
+
+  // Regression analysis
+  let regressionHTML = '';
+  for (const [key, regression] of Object.entries(answers.regressionAnalysis)) {
+    if (!regression.spec) continue; // Skip if no spec
+
+    const className = regression.isCorrect ? 'regression-correct' : 'regression-incorrect';
+    const label = regression.isCorrect ? '✓ CORRECT' : '✗ INCORRECT';
+
+    regressionHTML += `
+      <div class="regression-result ${className}">
+        <strong>${label}: ${regression.spec}</strong>
+        <p>${regression.result}</p>
+      </div>
+    `;
+  }
+  document.getElementById('regression-analysis').innerHTML = regressionHTML;
+
+  // Key takeaway
+  document.getElementById('key-takeaway').innerHTML = answers.keyTakeaway;
+
+  // Identified elements
+  let elementsHTML = '<div class="identified-elements-grid">';
+  for (const [element, value] of Object.entries(answers.identifiedElements)) {
+    const display = element.charAt(0).toUpperCase() + element.slice(1);
+    elementsHTML += `
+      <div class="element-box">
+        <h4>${display}</h4>
+        <p>${value === 'None' ? '—' : value}</p>
+      </div>
+    `;
+  }
+  elementsHTML += '</div>';
+  document.getElementById('identified-elements').innerHTML = elementsHTML;
+}
+
+// ============================================================================
+// Toggle All Answers
+// ============================================================================
+
+function toggleAllAnswers() {
+  const section = document.getElementById('answers-section');
+  const button = document.getElementById('show-all-answers');
+
+  if (answersShown) {
+    section.style.display = 'none';
+    button.textContent = 'Show Full Answer';
+    button.classList.remove('answered');
+    answersShown = false;
+  } else {
+    section.style.display = 'block';
+    button.textContent = 'Hide Answer';
+    button.classList.add('answered');
+    answersShown = true;
+    // Scroll to answers
+    setTimeout(() => {
+      section.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
+  }
 }
 
 // ============================================================================

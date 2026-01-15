@@ -33,7 +33,7 @@ history.md
 SETUP_GUIDE.md
 Session\ 1.5\ \(optional\ session\)/R/test.R
 
-# Practice Causality build artifacts
+# Practice Causality build artifacts (keep PNG for web, ignore PDFs and RDS)
+practice-causality/images/*.pdf
 practice-causality/results/
-practice-causality/images/
 practice-causality/*.rds

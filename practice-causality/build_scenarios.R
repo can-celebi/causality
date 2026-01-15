@@ -220,12 +220,13 @@ scenario_4 <- list(
     student_resources <- 20 + 1.5 * parent_ed + rnorm(n, mean = 0, sd = 4)  # tutors, books, etc.
     student_aptitude <- 50 + 1.8 * parent_ed + rnorm(n, mean = 0, sd = 6)  # genes + early learning
 
-    # Both affect GPA
-    gpa <- 2.0 + 0.08 * student_resources + 0.012 * student_aptitude + rnorm(n, mean = 0, sd = 0.3)
+    # Both affect GPA (scale 0-4)
+    gpa <- 2.0 + 0.08 * student_resources + 0.012 * student_aptitude + rnorm(n, mean = 0, sd = 0.5)
+    gpa <- pmax(0, pmin(4, gpa))  # Keep between 0 and 4
 
-    # GPA affects college admission (chain)
-    admission_score <- 40 + 15 * gpa + rnorm(n, mean = 0, sd = 5)
-    college_admission <- ifelse(admission_score > 50, 1, 0)
+    # GPA affects college admission (chain) - probabilistic
+    admission_prob <- plogis(-3 + 1.5 * gpa)  # logistic function
+    college_admission <- rbinom(n, size = 1, prob = admission_prob)
 
     data.frame(
       ParentEducation = parent_ed,

@@ -34,12 +34,44 @@
 
             <!-- Questions Section -->
             <section class="questions-section">
+                <h2>🎯 Questions</h2>
                 <div id="questions-container"></div>
+            </section>
+
+            <!-- Comprehensive Answers Section -->
+            <section class="answers-section" id="answers-section" style="display: none;">
+                <h2>✓ Complete Answer Explanation</h2>
+
+                <!-- Causal Structure -->
+                <div class="answer-card">
+                    <h3>1. The Causal Structure</h3>
+                    <div id="causal-description"></div>
+                    <img id="dag-image" class="dag-image" style="margin-top: 20px; max-width: 100%; height: auto;">
+                </div>
+
+                <!-- Regression Analysis -->
+                <div class="answer-card">
+                    <h3>2. Regression Analysis & Key Results</h3>
+                    <div id="regression-analysis"></div>
+                </div>
+
+                <!-- Key Takeaway -->
+                <div class="answer-card key-takeaway">
+                    <h3>💡 Key Takeaway</h3>
+                    <div id="key-takeaway"></div>
+                </div>
+
+                <!-- Identified Elements -->
+                <div class="answer-card">
+                    <h3>🔍 Identified Elements</h3>
+                    <div id="identified-elements"></div>
+                </div>
             </section>
 
             <!-- Navigation -->
             <div class="navigation">
                 <button id="prev-btn" class="nav-scenario-btn" onclick="previousScenario()">← Previous Scenario</button>
+                <button id="show-all-answers" class="nav-scenario-btn show-all-btn" onclick="toggleAllAnswers()">Show Full Answer</button>
                 <button id="next-btn" class="nav-scenario-btn" onclick="nextScenario()">Next Scenario →</button>
             </div>
         </div>
@@ -47,11 +79,12 @@
 
     <!-- Footer -->
     <footer>
-        <p>Interactive Causal Inference Practice - Click "Show Answer" to reveal explanations</p>
+        <p>Interactive Causal Inference Practice - Complete answers with DAGs and regression results</p>
     </footer>
 
     <!-- Load scenarios data and scripts -->
     <script src="js/practice-causality-data.js"></script>
+    <script src="js/practice-causality-answers.js"></script>
     <script src="js/practice-causality.js"></script>
 </body>
 </html>

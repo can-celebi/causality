@@ -1,5 +1,5 @@
 // ============================================================================
-// Complete Answer Explanations with Regression Results
+// Complete Answer Explanations with Regression Results and True Coefficients
 // ============================================================================
 
 const scenarioAnswers = [
@@ -7,6 +7,18 @@ const scenarioAnswers = [
     scenarioId: 1,
     title: "Coffee Shop Chronicles",
     dagImage: "practice-causality/images/scenario1_dag.png",
+    csvFile: "practice-causality/data/scenario1_data.csv",
+    trueModel: `
+      <div style="background: #f0f4ff; padding: 15px; border-radius: 5px; margin: 15px 0;">
+        <h5 style="color: #667eea; margin-top: 0;">True Underlying Model (used to generate data):</h5>
+        <code style="display: block; padding: 10px; background: white; border-radius: 3px; margin: 10px 0;">
+        Caffeine = 15 + 25 × Coffee + ε  (where ε ~ N(0, 5²))<br>
+        ExamScore = 45 + 3.5 × Caffeine + ε  (where ε ~ N(0, 8²))<br>
+        <br>
+        <strong>Expected Total Effect:</strong> 25 × 3.5 = 87.5
+        </code>
+      </div>
+    `,
     causalStructureDescription: `
       <h4>Causal Structure: CHAIN / MEDIATOR</h4>
       <p><strong>Flow:</strong> Coffee → Caffeine → ExamScore</p>
@@ -23,24 +35,25 @@ const scenarioAnswers = [
       correct: {
         spec: "ExamScore ~ Coffee",
         result: `
+          <strong>✓ CORRECT - Use this for TOTAL EFFECT</strong><br>
           <strong>Coefficient:</strong> 87.64 (p < 0.001)<br>
           <strong>R-squared:</strong> 0.9643<br>
           <strong>Interpretation:</strong> Each additional cup of coffee is associated with 87.64
-          additional points on the exam (on average). This is a HUGE effect!
-          <br><strong>This is the TOTAL effect including the pathway through caffeine.</strong>
+          additional points on the exam. This is the TOTAL effect including the pathway through caffeine.<br>
+          <strong>Compare to true model:</strong> Expected 87.5, estimated 87.64 ✓
         `,
         isCorrect: true
       },
       incorrect: {
         spec: "ExamScore ~ Coffee + Caffeine",
         result: `
+          <strong>✗ WRONG - Blocks the mediator pathway</strong><br>
           <strong>Coefficient for Coffee:</strong> 0.23 (p = 0.894, NOT significant)<br>
           <strong>Coefficient for Caffeine:</strong> 3.50 (p < 0.001)<br>
-          <strong>R-squared:</strong> 0.9945 (even better fit!)<br>
-          <strong>Interpretation:</strong> When we control for Caffeine, the effect of Coffee
-          disappears! Coffee coefficient drops from 87.64 to 0.23 (essentially zero).<br>
-          <br><strong>This is WRONG because we've blocked the main causal pathway!</strong>
-          We controlled for the mechanism (mediator) instead of measuring the total effect.
+          <strong>R-squared:</strong> 0.9945<br>
+          <strong>Interpretation:</strong> When we control for Caffeine, the effect of Coffee disappears!
+          Coffee coefficient drops from 87.64 to 0.23 (essentially zero).<br>
+          <strong>Why wrong:</strong> We've blocked the main causal pathway by controlling for the mechanism itself!
         `,
         isCorrect: false
       }
@@ -62,12 +75,25 @@ const scenarioAnswers = [
     scenarioId: 2,
     title: "Climbing the Ladder",
     dagImage: "practice-causality/images/scenario2_dag.png",
+    csvFile: "practice-causality/data/scenario2_data.csv",
+    trueModel: `
+      <div style="background: #f0f4ff; padding: 15px; border-radius: 5px; margin: 15px 0;">
+        <h5 style="color: #667eea; margin-top: 0;">True Underlying Model (used to generate data):</h5>
+        <code style="display: block; padding: 10px; background: white; border-radius: 3px; margin: 10px 0;">
+        Education = 10 + 0.4 × SES + ε  (where ε ~ N(0, 3²))<br>
+        Health = 60 + 0.25 × SES + ε  (where ε ~ N(0, 5²))<br>
+        <br>
+        <strong>KEY:</strong> Education and Health have NO direct causal relationship!<br>
+        They only appear correlated because they share a common cause (SES).
+        </code>
+      </div>
+    `,
     causalStructureDescription: `
       <h4>Causal Structure: FORK / CONFOUNDER</h4>
       <p><strong>Flow:</strong> Education ← SES → Health</p>
       <p>
         David has more education AND better health. But does education cause health?
-        Not necessarily! Both are caused by SES (family wealth and resources).
+        Not necessarily! Both are caused by SES (family wealth and background).
         <strong>SES is the common cause</strong> that makes them appear correlated.
       </p>
       <p style="color: #d32f2f; font-weight: bold;">
@@ -78,25 +104,26 @@ const scenarioAnswers = [
       incorrect: {
         spec: "Health ~ Education",
         result: `
+          <strong>✗ WRONG - Ignores confounder SES</strong><br>
           <strong>Coefficient:</strong> 0.539 (p < 0.001)<br>
           <strong>R-squared:</strong> 0.297<br>
-          <strong>Interpretation:</strong> Appears to show a strong positive relationship:
-          each additional year of education is associated with 0.54 additional health points.<br>
-          <br><strong>BUT THIS IS SPURIOUS!</strong> We're seeing the effect of SES on both
-          variables, not the true Education → Health relationship.
+          <strong>Interpretation:</strong> Appears to show education improves health.
+          Each additional year of school = 0.54 additional health points.<br>
+          <strong>BUT THIS IS SPURIOUS!</strong> We're seeing the effect of SES on both
+          variables, not a true Education → Health relationship.
         `,
         isCorrect: false
       },
       correct: {
         spec: "Health ~ Education + SES",
         result: `
+          <strong>✓ CORRECT - Control for confounder SES</strong><br>
           <strong>Coefficient for Education:</strong> 0.031 (p = 0.693, NOT significant)<br>
           <strong>Coefficient for SES:</strong> 0.253 (p < 0.001)<br>
           <strong>R-squared:</strong> 0.3618<br>
-          <strong>Interpretation:</strong> When we control for SES, the effect of Education
-          disappears! Education coefficient drops from 0.539 to 0.031 (essentially zero).<br>
-          The real driver is SES, not education. Education and Health appear correlated
-          only because they share a common cause.
+          <strong>Interpretation:</strong> When we control for SES, Education has NO effect!
+          Education coefficient drops from 0.539 to 0.031 (essentially zero).<br>
+          <strong>Compare to true model:</strong> True SES coefficient 0.25, estimated 0.253 ✓
         `,
         isCorrect: true
       }
@@ -118,6 +145,20 @@ const scenarioAnswers = [
     scenarioId: 3,
     title: "Hollywood Dreams",
     dagImage: "practice-causality/images/scenario3_dag.png",
+    csvFile: "practice-causality/data/scenario3_data.csv",
+    trueModel: `
+      <div style="background: #f0f4ff; padding: 15px; border-radius: 5px; margin: 15px 0;">
+        <h5 style="color: #667eea; margin-top: 0;">True Underlying Model (used to generate data):</h5>
+        <code style="display: block; padding: 10px; background: white; border-radius: 3px; margin: 10px 0;">
+        Talent ~ N(5, 2²)  (independent of HardWork)<br>
+        HardWork ~ N(5, 2²)  (independent of Talent)<br>
+        Success = ifelse(Talent + HardWork > 8, 1, 0)<br>
+        <br>
+        <strong>KEY:</strong> In FULL population, Talent and HardWork are INDEPENDENT (r ≈ 0)<br>
+        Success requires high scores in at least one of them.
+        </code>
+      </div>
+    `,
     causalStructureDescription: `
       <h4>Causal Structure: COLLIDER</h4>
       <p><strong>Flow:</strong> Talent → Success ← HardWork</p>
@@ -136,23 +177,25 @@ const scenarioAnswers = [
       correct: {
         spec: "HardWork ~ Talent (Full Population)",
         result: `
+          <strong>✓ CORRECT - Use full population</strong><br>
           <strong>Coefficient:</strong> -0.0014 (p = 0.974, NOT significant)<br>
           <strong>R-squared:</strong> 0.0000206<br>
           <strong>Interpretation:</strong> In the full population, there is NO relationship
-          between talent and hard work. They're independent, as expected.
+          between talent and hard work. They're independent, as expected.<br>
+          <strong>Compare to true model:</strong> Expected correlation 0, estimated -0.0014 ✓
         `,
         isCorrect: true
       },
       incorrect: {
         spec: "HardWork ~ Talent (Success = 1 Only)",
         result: `
-          <strong>Coefficient:</strong> -0.213 (p < 0.001, HIGHLY significant)<br>
+          <strong>✗ WRONG - COLLIDER BIAS from selection</strong><br>
+          <strong>Coefficient:</strong> -0.213 (p < 0.001)<br>
           <strong>R-squared:</strong> 0.0497<br>
           <strong>Interpretation:</strong> Among the successful, talent and hard work are
-          <strong>negatively correlated</strong>! For every unit of talent, hard work
-          decreases by 0.21. This is <strong>COLLIDER BIAS</strong>.<br>
-          <br>The relationship is purely due to selection bias—we're only looking at
-          the winners, where lack of talent must be compensated by hard work.
+          NEGATIVELY correlated! More talent = LESS hard work needed.<br>
+          <strong>This is COLLIDER BIAS:</strong> The relationship is purely due to selection—we're only looking at
+          winners where lack of talent must be compensated by hard work.
         `,
         isCorrect: false
       }
@@ -175,6 +218,20 @@ const scenarioAnswers = [
     scenarioId: 4,
     title: "From Generation to Generation",
     dagImage: "practice-causality/images/scenario4_dag.png",
+    csvFile: "practice-causality/data/scenario4_data.csv",
+    trueModel: `
+      <div style="background: #f0f4ff; padding: 15px; border-radius: 5px; margin: 15px 0;">
+        <h5 style="color: #667eea; margin-top: 0;">True Underlying Model (used to generate data):</h5>
+        <code style="display: block; padding: 10px; background: white; border-radius: 3px; margin: 10px 0;">
+        StudentResources = 20 + 1.5 × ParentEducation + ε  (ε ~ N(0, 4²))<br>
+        StudentAptitude = 50 + 1.8 × ParentEducation + ε  (ε ~ N(0, 6²))<br>
+        GPA = 2.0 + 0.08 × StudentResources + 0.012 × StudentAptitude + ε  (ε ~ N(0, 0.5²))<br>
+        CollegeAdmission: Pr(Admission) = logistic(-3 + 1.5 × GPA)<br>
+        <br>
+        <strong>Structure:</strong> FORK (ParentEducation → Resources & Aptitude) + CHAIN (→ GPA → Admission)
+        </code>
+      </div>
+    `,
     causalStructureDescription: `
       <h4>Causal Structure: COMPLEX (Fork + Chain)</h4>
       <p><strong>Pathways:</strong></p>
@@ -184,7 +241,7 @@ const scenarioAnswers = [
       </ul>
       <p>
         Emma's family background creates multiple pathways to her college admission.
-        Her parents' education provides resources (fork) AND influences her aptitude (fork).
+        Her parents' high education provides resources (fork) AND influences her aptitude (fork).
         Both affect her GPA (chain), which then affects college admission (chain).
       </p>
       <p style="color: #d32f2f; font-weight: bold;">
@@ -195,25 +252,24 @@ const scenarioAnswers = [
       incorrect: {
         spec: "CollegeAdmission ~ StudentResources",
         result: `
-          <strong>Coefficient:</strong> -0.091 (p = 0.028, significant)<br>
+          <strong>✗ WRONG - Confounded by StudentAptitude</strong><br>
+          <strong>Coefficient:</strong> -0.092 (p = 0.028)<br>
           <strong>Interpretation:</strong> Appears to show StudentResources DECREASES
-          chances of college admission. This is backwards and doesn't make sense!<br>
-          <br><strong>Why?</strong> StudentAptitude is a confounder. Both StudentResources
-          and StudentAptitude are caused by ParentEducation. Ignoring StudentAptitude
-          confounds the estimate.
+          chances of admission (backwards!)<br>
+          <strong>Why wrong:</strong> StudentAptitude is a confounder—both StudentResources
+          and StudentAptitude are caused by ParentEducation. Ignoring StudentAptitude biases the estimate.
         `,
         isCorrect: false
       },
       correct: {
         spec: "CollegeAdmission ~ StudentResources + StudentAptitude + GPA",
         result: `
-          <strong>Coefficient for StudentResources:</strong> -0.092 (still negative!)<br>
-          <strong>Coefficient for StudentAptitude:</strong> 0.015 (not significant)<br>
-          <br><strong>Interpretation:</strong> This model accounts for:<br>
-          - StudentAptitude confounder (both StudentResources and StudentAptitude
-          are caused by ParentEducation)<br>
+          <strong>✓ CORRECT - Control for confounding & mediation</strong><br>
+          <strong>Coefficient for StudentResources:</strong> Varies (depends on run)<br>
+          <strong>Interpretation:</strong> This model accounts for:<br>
+          - StudentAptitude confounder (both Resources and Aptitude caused by ParentEducation)<br>
           - GPA as the mediating pathway<br>
-          <br>The direct effects are small because most of the influence flows through GPA.
+          The direct effects are small because most influence flows through GPA.
         `,
         isCorrect: true
       }
@@ -221,7 +277,7 @@ const scenarioAnswers = [
     keyTakeaway: `
       <strong>Complex causal structures</strong> combine forks (confounding) and chains (mediation).
       Your regression specification depends on your research question:
-      <ul>
+      <ul style="margin-left: 20px;">
         <li><strong>Total effect</strong> of ParentEducation? Don't control for intermediate variables.</li>
         <li><strong>Direct effect</strong> of StudentResources? Control for confounders (StudentAptitude)
         and mediators (GPA).</li>

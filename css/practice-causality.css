@@ -235,6 +235,30 @@ body {
   line-height: 1.6;
 }
 
+.answer-box.answer-correct {
+  background: #e8f5e9;
+  border-left-color: #4caf50;
+}
+
+.answer-box.answer-incorrect {
+  background: #ffebee;
+  border-left-color: #f44336;
+}
+
+.answer-box.answer-incorrect h4 {
+  color: #c62828;
+}
+
+.answer-box.answer-incorrect h4::before {
+  content: "✗ ";
+  color: #f44336;
+}
+
+.answer-box.answer-correct h4::before {
+  content: "✓ ";
+  color: #4caf50;
+}
+
 .answer-box .hint {
   background: rgba(76, 175, 80, 0.1);
   padding: 10px 15px;
@@ -473,6 +497,60 @@ footer p {
 
 .show-all-btn.answered {
   background: #ff9800;
+}
+
+/* Construction Warning */
+.construction-warning {
+  background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+  border-left: 4px solid #ff9800;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 25px;
+  box-shadow: 0 2px 8px rgba(255, 152, 0, 0.15);
+}
+
+.construction-warning strong {
+  color: #e65100;
+  display: block;
+  margin-bottom: 10px;
+  font-size: 1.05rem;
+}
+
+.construction-warning p {
+  color: #bf360c;
+  line-height: 1.7;
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.construction-warning strong:first-child {
+  display: block;
+}
+
+/* CSV Download Button */
+.download-btn-small {
+  display: inline-block;
+  background: #4caf50;
+  color: white;
+  padding: 10px 20px;
+  border-radius: 5px;
+  text-decoration: none;
+  margin: 10px 0;
+  font-weight: 600;
+  transition: all 0.3s;
+  border: none;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+.download-btn-small:hover {
+  background: #45a049;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+}
+
+.download-btn-small:active {
+  transform: translateY(0);
 }
 
 /* Responsive Design */

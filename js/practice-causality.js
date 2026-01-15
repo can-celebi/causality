@@ -69,6 +69,36 @@ function loadScenario(index) {
 function renderAnswers(scenario, scenarioIndex) {
   const answers = scenarioAnswers[scenarioIndex];
 
+  // True model
+  if (answers.trueModel) {
+    let trueModelSection = `
+      <div class="answer-card">
+        <h3>📋 True Underlying Model</h3>
+        ${answers.trueModel}
+      </div>
+    `;
+    // Insert before causal description
+    document.getElementById('answers-section').insertAdjacentHTML('beforeend', trueModelSection);
+  }
+
+  // CSV Download
+  if (answers.csvFile) {
+    let csvSection = `
+      <div class="answer-card" style="background: #e8f5e9; border-left-color: #4caf50;">
+        <h3>📊 Practice with Real Data</h3>
+        <p>Download the dataset used in this scenario and try running the regressions yourself!</p>
+        <a href="${answers.csvFile}" download class="download-btn-small">
+          ⬇️ Download CSV Data
+        </a>
+        <p style="font-size: 0.9rem; color: #555; margin-top: 10px;">
+          <strong>Challenge:</strong> Download the CSV, load it into R or your favorite stats tool,<br>
+          and figure out which regression gives the correct coefficients!
+        </p>
+      </div>
+    `;
+    document.getElementById('answers-section').insertAdjacentHTML('beforeend', csvSection);
+  }
+
   // Causal description
   document.getElementById('causal-description').innerHTML = answers.causalStructureDescription;
 
@@ -82,11 +112,10 @@ function renderAnswers(scenario, scenarioIndex) {
     if (!regression.spec) continue; // Skip if no spec
 
     const className = regression.isCorrect ? 'regression-correct' : 'regression-incorrect';
-    const label = regression.isCorrect ? '✓ CORRECT' : '✗ INCORRECT';
 
     regressionHTML += `
       <div class="regression-result ${className}">
-        <strong>${label}: ${regression.spec}</strong>
+        <strong>${regression.spec}</strong>
         <p>${regression.result}</p>
       </div>
     `;
@@ -178,6 +207,7 @@ function createMultipleChoice(question, questionNum, scenario) {
 
   question.options.forEach((option, optIndex) => {
     const id = `q${questionNum}-opt${optIndex}`;
+    const isCorrect = optIndex === question.correctAnswer;
     html += `
       <div class="option">
         <input
@@ -185,7 +215,8 @@ function createMultipleChoice(question, questionNum, scenario) {
           id="${id}"
           name="q${questionNum}"
           value="${optIndex}"
-          onchange="toggleAnswer(${questionNum}, ${optIndex}, this.checked)"
+          data-correct="${isCorrect}"
+          onchange="toggleAnswer(${questionNum}, ${optIndex}, this.checked, ${isCorrect})"
         >
         <label for="${id}">${option}</label>
       </div>
@@ -232,13 +263,24 @@ function createShortAnswerQuestion(question, questionNum, scenario) {
 // Toggle Answer Visibility
 // ============================================================================
 
-function toggleAnswer(questionNum, optionIndex, show) {
+function toggleAnswer(questionNum, optionIndex, show, isCorrect) {
   const answerBox = document.getElementById(`answer-${questionNum}`);
 
   if (answerBox.classList.contains('show')) {
     answerBox.classList.remove('show');
   } else {
     answerBox.classList.add('show');
+
+    // Update styling based on correctness
+    if (typeof isCorrect !== 'undefined') {
+      if (isCorrect) {
+        answerBox.classList.add('answer-correct');
+        answerBox.classList.remove('answer-incorrect');
+      } else {
+        answerBox.classList.add('answer-incorrect');
+        answerBox.classList.remove('answer-correct');
+      }
+    }
 
     // Update button text if it exists
     const buttons = document.querySelectorAll('.show-answer-btn');

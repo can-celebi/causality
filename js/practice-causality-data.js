@@ -23,7 +23,8 @@ const scenarios = [
         type: "short",
         prompt: "Draw the causal graph for this scenario. What variables affect what?",
         hint: "Think about whether coffee directly affects exam scores, or if there's an intermediate step.",
-        answer: "Coffee → Caffeine → ExamScore (a chain/mediator structure)"
+        answer: "Coffee → Caffeine → ExamScore (a chain/mediator structure)",
+        dagImage: "practice-causality/images/scenario1_dag.png"
       },
       {
         id: 2,
@@ -94,7 +95,8 @@ const scenarios = [
         type: "short",
         prompt: "Draw the causal graph. What is the relationship between these variables?",
         hint: "Think about whether both variables could be caused by the same underlying factor.",
-        answer: "SES causes both Education and Health (fork/common cause structure)"
+        answer: "SES causes both Education and Health (fork/common cause structure)",
+        dagImage: "practice-causality/images/scenario2_dag.png"
       },
       {
         id: 2,
@@ -166,7 +168,8 @@ const scenarios = [
         type: "short",
         prompt: "Draw the causal graph. How do these variables relate to each other?",
         hint: "What causes success? How many different paths lead to it?",
-        answer: "Talent → Success ← HardWork (both point into Success - a collider)"
+        answer: "Talent → Success ← HardWork (both point into Success - a collider)",
+        dagImage: "practice-causality/images/scenario3_dag.png"
       },
       {
         id: 2,
@@ -246,20 +249,21 @@ const scenarios = [
         type: "short",
         prompt: "Draw the causal graph. Identify all the pathways from ParentEducation to CollegeAdmission.",
         hint: "How many routes does parental education take to affect college admission?",
-        answer: "ParentEducation affects college admission through multiple paths: (1) via StudentResources → GPA → CollegeAdmission, and (2) via StudentAptitude → GPA → CollegeAdmission"
+        answer: "ParentEducation affects college admission through multiple paths: (1) via StudentResources → GPA → CollegeAdmission, and (2) via StudentAptitude → GPA → CollegeAdmission",
+        dagImage: "practice-causality/images/scenario4_dag.png"
       },
       {
         id: 2,
         type: "multiple-choice",
-        prompt: "If you want to estimate the effect of StudentResources on college admission, which variables do you NEED to control for?",
+        prompt: "If you want the TOTAL effect of StudentResources on college admission, which variables do you control for?",
         options: [
           "Nothing; just regress CollegeAdmission ~ StudentResources",
-          "StudentAptitude (to control for confounding)",
-          "GPA (to control for mediation)",
+          "StudentAptitude only (the confounder)",
+          "GPA only (the mediator)",
           "Both StudentAptitude and GPA"
         ],
-        correctAnswer: 3,
-        explanation: "StudentAptitude is a confounder of the StudentResources → CollegeAdmission relationship (both are caused by ParentEducation). GPA is the mediating pathway. You need both to isolate the true effect of resources."
+        correctAnswer: 1,
+        explanation: "StudentAptitude is a confounder (both StudentResources and StudentAptitude are caused by ParentEducation), so you MUST control for it. But GPA is a MEDIATOR—the pathway through which StudentResources affects admission. If you control for GPA, you block that pathway and lose the effect. For the TOTAL effect, control confounders but NOT mediators."
       },
       {
         id: 3,

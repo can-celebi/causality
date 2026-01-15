@@ -250,6 +250,10 @@ function createShortAnswerQuestion(question, questionNum, scenario) {
       <p>${question.answer}</p>
   `;
 
+  if (question.dagImage) {
+    html += `<img src="${question.dagImage}" class="dag-image" alt="Causal DAG" style="margin-top: 15px; max-width: 100%; height: auto;">`;
+  }
+
   if (question.hint) {
     html += `<div class="hint"><strong>Hint:</strong> ${question.hint}</div>`;
   }

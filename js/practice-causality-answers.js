@@ -249,40 +249,45 @@ const scenarioAnswers = [
       </p>
     `,
     regressionAnalysis: {
-      incorrect: {
+      incorrect1: {
         spec: "CollegeAdmission ~ StudentResources",
         result: `
           <strong>✗ WRONG - Confounded by StudentAptitude</strong><br>
-          <strong>Coefficient:</strong> -0.092 (p = 0.028)<br>
-          <strong>Interpretation:</strong> Appears to show StudentResources DECREASES
-          chances of admission (backwards!)<br>
-          <strong>Why wrong:</strong> StudentAptitude is a confounder—both StudentResources
-          and StudentAptitude are caused by ParentEducation. Ignoring StudentAptitude biases the estimate.
+          <strong>Interpretation:</strong> This ignores StudentAptitude, which is a confounder.
+          Both StudentResources and StudentAptitude are caused by ParentEducation.
+          The estimate is biased because it conflates the effect of resources with the effect of aptitude.
+        `,
+        isCorrect: false
+      },
+      incorrect2: {
+        spec: "CollegeAdmission ~ StudentResources + StudentAptitude + GPA",
+        result: `
+          <strong>✗ WRONG - Controls for the mediator GPA</strong><br>
+          <strong>Interpretation:</strong> This blocks the main causal pathway! GPA is a MEDIATOR—it's the mechanism
+          through which StudentResources affects CollegeAdmission. By controlling for GPA, you remove the main effect
+          you're trying to measure. You've accounted for the confounder correctly (StudentAptitude), but you've also
+          blocked the pathway through GPA.
         `,
         isCorrect: false
       },
       correct: {
-        spec: "CollegeAdmission ~ StudentResources + StudentAptitude + GPA",
+        spec: "CollegeAdmission ~ StudentResources + StudentAptitude",
         result: `
-          <strong>✓ CORRECT - Control for confounding & mediation</strong><br>
-          <strong>Coefficient for StudentResources:</strong> Varies (depends on run)<br>
-          <strong>Interpretation:</strong> This model accounts for:<br>
-          - StudentAptitude confounder (both Resources and Aptitude caused by ParentEducation)<br>
-          - GPA as the mediating pathway<br>
-          The direct effects are small because most influence flows through GPA.
+          <strong>✓ CORRECT - Control for confounder, not mediator</strong><br>
+          <strong>Interpretation:</strong> This gives you the TOTAL EFFECT of StudentResources on CollegeAdmission.
+          You control for StudentAptitude (the confounder—both caused by ParentEducation)
+          but you do NOT control for GPA (the mediator—the pathway through which resources affect admission).
+          This captures the full effect: StudentResources → GPA → CollegeAdmission.
         `,
         isCorrect: true
       }
     },
     keyTakeaway: `
-      <strong>Complex causal structures</strong> combine forks (confounding) and chains (mediation).
-      Your regression specification depends on your research question:
-      <ul style="margin-left: 20px;">
-        <li><strong>Total effect</strong> of ParentEducation? Don't control for intermediate variables.</li>
-        <li><strong>Direct effect</strong> of StudentResources? Control for confounders (StudentAptitude)
-        and mediators (GPA).</li>
-      </ul>
-      Always draw your causal graph first!
+      <strong>Complex causal structures require careful thinking about your research question.</strong><br>
+      <strong>Question:</strong> What is the total effect of StudentResources on CollegeAdmission?<br>
+      <strong>Answer:</strong> Control for confounders (StudentAptitude) but NOT for mediators (GPA).<br>
+      If you control for mediators, you block the causal pathway and lose the effect you're trying to measure!
+      Always ask: "Am I trying to measure the total effect, or just the direct effect that doesn't go through a particular variable?"
     `,
     identifiedElements: {
       mediator: "GPA",

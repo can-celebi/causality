@@ -44,6 +44,7 @@
 ###############################################################################
 
 # TASK: Check your current working directory with getwd()
+setwd("~/Documents/Teaching/CEU/causality/R/session1")
 
 # TASK: Create a "data" directory if it doesn't exist
 #       (hint: use dir.exists() to check, dir.create() to create)
@@ -55,14 +56,31 @@
 #       - writexl (for writing Excel files)
 #       - lubridate (for date manipulation)
 
+# if you do not have the package download it via
+# install.packages("tidyverse")
+library(tidyverse)
+require(tidyverse)
 
 ###############################################################################
 # 1) Logging
 ###############################################################################
 
 # TASK: Print "Hello world!" using print()
+print('hello world')
+
+print('hello world')
 
 # TASK: Print "Hello world!" using cat() and notice the difference
+cat("hello", "\n\nworld", "\n\nsomething then \n\nI will go to a new line ")
+cat("asdasdas
+    asdasd
+    asda
+    
+    
+    asd
+    
+    asd")
+
 
 # TASK: Use cat() to print multiple strings on separate lines
 #       (hint: use \n for newline)
@@ -75,6 +93,16 @@
 ###############################################################################
 
 # TASK: Create a for-loop that iterates over a sequence of numbers you choose
+for(i in c(1,2,3)) {
+  print(i)
+}
+
+for(i in 1:3) {
+  # this is where I print stuff inside the loop
+  cat("loop number:", i, "\n")
+  
+}
+
 
 # TASK: Inside the loop, print the iteration number and perform some action
 #       (hint: use cat() or print() with the loop variable)
@@ -86,7 +114,22 @@
 
 # TASK: Write a function that takes a parameter and performs an operation
 
-# TASK: Inside the function, perform a calculation and return the result
+# camel case naming: first and second -> firstSecond
+# first_second
+
+# we want add two thing
+addTwoNumber <- function(a, b) {
+  sum <- a + b
+  return(sum)
+}
+
+sum <- addTwoNumber(10, 23)
+
+emilia <- addTwoNumber(10, 35)
+
+paste0("asdas", "k;lk;lk;lk")
+
+TASK: Inside the function, perform a calculation and return the result
 
 # TASK: Call your function with different arguments to test it
 
@@ -94,6 +137,34 @@
 ###############################################################################
 # 4) Data types & objects
 ###############################################################################
+
+# BOOLEAN -> LOGICAL
+# NUMERIC -> ALL THE NUMBERS YOU CAN THINK OF
+# CHARACTER -> STRINGS
+# FACTORS
+# NA
+# NULL
+
+x <- 2
+x
+class(x)
+
+y <- "5"
+y
+class(y)
+
+z <- FALSE # you can also use F instead of FALSE
+zz <- TRUE # you can also use T instead of TRUE
+
+c <- F
+class(z)
+class(zz)
+class(c)
+
+
+x <- NA
+
+
 
 # TASK: Create a numeric variable and assign it a number
 
@@ -121,6 +192,29 @@
 ###############################################################################
 # 5) Operators, logical statements, indexing
 ###############################################################################
+
+k <- c(1:20)
+l <- k*2
+
+
+for(i in k) {
+  
+  if(i > 2 & l[i] < 20) {
+    # print(i)
+    # print(l[i])
+    cat("i:", i, "l[i]:", l[i], "\n")
+  }
+    
+  
+}
+
+
+# 11 - 12:30 ON TUESDAYS
+
+# OFFICE HOURS
+# THURSDAY 1:00 TO 2:30 
+
+
 
 # TASK: Create two variables with numeric values and perform arithmetic operations
 
@@ -166,6 +260,29 @@
 ###############################################################################
 # 7) Data frames
 ###############################################################################
+
+# Student IDs
+studId <- c(1, 2, 3, 4, 5, 6, 7)
+
+# Universities
+uni <- c("ceu", "uv", "ceu", "wu", "uv", "ceu", "wu")
+
+# Coffee cups per day
+coffee <- c(3, 2, 5, 1, 4, 2, 3)
+
+# Study hours per week (with missing value)
+studyHrs <- c(20, 15, NA, 25, 18, 22, 30)
+
+
+x <- data.frame(
+  id = studId,
+  uni,
+  coffee,
+  hrs = studyHrs
+)
+
+
+
 
 # TASK: Create vectors for: studentId, university, coffeeCups, studyHours
 #       (include at least one missing value in studyHours)

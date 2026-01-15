@@ -1,16 +1,27 @@
-Causality - R.Rproj
-.claude
-history.md
-# README.md
-SETUP_GUIDE.md
-tools/
-R/fetch_student_responses.R
-R/session1/session1.R
-data/
-R/session1/archive/
-R/session1/mix/adult_cheatsheet.R
+# Directories to ignore
+Operational/
+.claude/
 
-# Wildcard patterns for future sessions
-R/session*/archive/
-R/session*/mix/adult_cheatsheet.R
-.Rproj.user
+# R project files
+*.Rproj
+.Rproj.user/
+
+# Session 1 - R-specific ignores
+Session\ 1/causality/R/fetch_student_responses.R
+Session\ 1/causality/R/session1/session1.R
+Session\ 1/causality/R/session1/archive/
+Session\ 1/causality/R/session1/mix/
+Session\ 1/causality/data/
+
+# Session 1.5 - PDF and temp files
+Session\ 1.5\ \(optional\ session\)/lecture.pdf
+Session\ 1.5\ \(optional\ session\)/problemSet.pdf
+Session\ 1.5\ \(optional\ session\)/textbook.pdf
+Session\ 1.5\ \(optional\ session\)/R/input/
+Session\ 1.5\ \(optional\ session\)/R/output/
+Session\ 1.5\ \(optional\ session\)/R/Rplots.pdf
+
+# General R files
+*.Rhistory
+history.md
+SETUP_GUIDE.md

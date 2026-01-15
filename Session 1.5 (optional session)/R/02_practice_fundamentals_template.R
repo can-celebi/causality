@@ -9,6 +9,8 @@
 # 4. Check your results against 02_practice_fundamentals_solutions.R if stuck
 # ==============================================================================
 
+source("test.R")
+
 # First, load the datasets
 source("01_data_generation.R")
 

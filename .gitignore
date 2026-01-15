@@ -25,6 +25,7 @@ Session\ 1.5\ \(optional\ session\)/R/04_randomization_simulation.R
 Session\ 1.5\ \(optional\ session\)/R/causal_graphs_concepts.md
 Session\ 1.5\ \(optional\ session\)/R/foundation.md
 Session\ 1.5\ \(optional\ session\)/R/session15.R
+Session\ 1.5\ \(optional\ session\)/R/practiceBeforeLiveSession.R
 
 # General R files
 *.Rhistory

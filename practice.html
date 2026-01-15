@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Practice Causality - Interactive Exercises</title>
+    <link rel="stylesheet" href="css/practice-causality.css">
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <div class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="nav-button nav-back">← Back to Sessions</a>
+            <h2 class="nav-title">Practice Causal Inference</h2>
+            <div class="scenario-counter">Scenario <span id="current-scenario">1</span> of <span id="total-scenarios">4</span></div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="container">
+        <!-- Scenario Content -->
+        <div id="scenario-container">
+            <!-- Scenario Title -->
+            <div class="scenario-header">
+                <h1 id="scenario-title">Scenario Loading...</h1>
+                <p id="scenario-subtitle" class="subtitle">Subtitle loading...</p>
+            </div>
+
+            <!-- The Story -->
+            <section class="story-section">
+                <h2>📖 The Story</h2>
+                <p id="story-text" class="story-text">Loading story...</p>
+            </section>
+
+            <!-- Questions Section -->
+            <section class="questions-section">
+                <div id="questions-container"></div>
+            </section>
+
+            <!-- Navigation -->
+            <div class="navigation">
+                <button id="prev-btn" class="nav-scenario-btn" onclick="previousScenario()">← Previous Scenario</button>
+                <button id="next-btn" class="nav-scenario-btn" onclick="nextScenario()">Next Scenario →</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer>
+        <p>Interactive Causal Inference Practice - Click "Show Answer" to reveal explanations</p>
+    </footer>
+
+    <!-- Load scenarios data and scripts -->
+    <script src="js/practice-causality-data.js"></script>
+    <script src="js/practice-causality.js"></script>
+</body>
+</html>

@@ -31,3 +31,9 @@ Session\ 1.5\ \(optional\ session\)/R/practiceBeforeLiveSession.R
 *.Rhistory
 history.md
 SETUP_GUIDE.md
+Session\ 1.5\ \(optional\ session\)/R/test.R
+
+# Practice Causality build artifacts
+practice-causality/results/
+practice-causality/images/
+practice-causality/*.rds

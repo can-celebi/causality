@@ -13,9 +13,7 @@ const scenarioAnswers = [
         <h5 style="color: #667eea; margin-top: 0;">True Underlying Model (used to generate data):</h5>
         <code style="display: block; padding: 10px; background: white; border-radius: 3px; margin: 10px 0;">
         Caffeine = 15 + 25 × Coffee + ε  (where ε ~ N(0, 5²))<br>
-        ExamScore = 45 + 3.5 × Caffeine + ε  (where ε ~ N(0, 8²))<br>
-        <br>
-        <strong>Expected Total Effect:</strong> 25 × 3.5 = 87.5
+        ExamScore = 45 + 3.5 × Caffeine + ε  (where ε ~ N(0, 8²))
         </code>
       </div>
     `,
@@ -293,6 +291,93 @@ const scenarioAnswers = [
       mediator: "GPA",
       confounder: "StudentAptitude (for StudentResources effect)",
       collider: "None"
+    }
+  },
+
+  {
+    scenarioId: 5,
+    title: "The Hospital Paradox",
+    dagImage: "practice-causality/images/scenario5_dag.png",
+    csvFile: "practice-causality/data/scenario5_data.csv",
+    trueModel: `
+      <div style="background: #f0f4ff; padding: 15px; border-radius: 5px; margin: 15px 0;">
+        <h5 style="color: #667eea; margin-top: 0;">True Underlying Model (used to generate data):</h5>
+        <code style="display: block; padding: 10px; background: white; border-radius: 3px; margin: 10px 0;">
+        BaselineSeverity ~ N(50, 15²)  (baseline disease severity)<br>
+        TreatmentReceived = ifelse(BaselineSeverity > 55, 1, 0)  (treated if severe)<br>
+        Recovery = 70 + (-0.5) × TreatmentReceived + 0.3 × BaselineSeverity + ε  (ε ~ N(0, 5²))<br>
+        Hospitalization = ifelse(Recovery < 60, 1, 0)  (hospitalized if poor recovery)<br>
+        <br>
+        <strong>KEY:</strong> Treatment coefficient is NEGATIVE (-0.5), but only because sick patients get treated!<br>
+        This is confounding, not treatment harm. When you control for BaselineSeverity, the true effect is revealed.
+        </code>
+      </div>
+    `,
+    causalStructureDescription: `
+      <h4>Causal Structure: COMPLEX (Confounder + Collider)</h4>
+      <p><strong>Confounding:</strong> BaselineSeverity → TreatmentReceived & Recovery</p>
+      <p><strong>Collision:</strong> TreatmentReceived → Hospitalization ← Recovery</p>
+      <p>
+        This scenario combines TWO sources of bias. BaselineSeverity is a confounder:
+        sicker patients get the treatment, and sicker patients recover more poorly.
+        Hospitalization is a collider: it's caused by both treatment received AND poor recovery.
+        Only observing hospitalized patients creates spurious associations.
+      </p>
+      <p style="color: #d32f2f; font-weight: bold;">
+        KEY INSIGHT: Treatment appears HARMFUL in the raw data, but this is confounding bias.
+        Control for severity to see the true (slightly negative) effect. This teaches why observational
+        studies in medicine require extreme caution!
+      </p>
+    `,
+    regressionAnalysis: {
+      confounded: {
+        spec: "Recovery ~ TreatmentReceived",
+        result: `
+          <strong>✗ WRONG - Confounded by BaselineSeverity</strong><br>
+          <strong>Coefficient for Treatment:</strong> Approximately -2.5 (APPEARS HARMFUL)<br>
+          <strong>Interpretation:</strong> Looks like treatment DECREASES recovery!<br>
+          <strong>Why wrong:</strong> The sickest patients get the treatment. Their poor recovery
+          is because they're sick, not because treatment is bad. This is confounding bias making
+          treatment appear worse than it is.
+        `,
+        isCorrect: false
+      },
+      collider: {
+        spec: "Recovery ~ TreatmentReceived (only Hospitalization = 1)",
+        result: `
+          <strong>✗ WRONG - Collider bias (selection on hospitalized patients)</strong><br>
+          <strong>Coefficient for Treatment:</strong> Highly negative and biased<br>
+          <strong>Interpretation:</strong> Among hospitalized patients, treatment looks very harmful<br>
+          <strong>Why wrong:</strong> You've selected only the worst-off patients. By conditioning on
+          Hospitalization (a collider), you've created an artificial negative correlation between
+          Treatment and Recovery. You're missing all the healthy patients who recovered well.
+        `,
+        isCorrect: false
+      },
+      correct: {
+        spec: "Recovery ~ TreatmentReceived + BaselineSeverity",
+        result: `
+          <strong>✓ CORRECT - Control for the confounder</strong><br>
+          <strong>Coefficient for Treatment:</strong> Approximately -0.5 (true effect)<br>
+          <strong>Coefficient for BaselineSeverity:</strong> Approximately 0.3<br>
+          <strong>Interpretation:</strong> When you account for baseline severity, treatment's effect
+          on recovery is correctly estimated. The treatment has a small negative direct effect on recovery
+          (maybe some patients get worse in the short term) but remember: severity also directly causes poor recovery.
+        `,
+        isCorrect: true
+      }
+    },
+    keyTakeaway: `
+      <strong>This scenario combines confounding AND collider bias—the most dangerous combination.</strong><br>
+      In observational data (especially medical studies), sick patients get more treatment.
+      You must control for their baseline severity. Additionally, looking only at "bad outcomes"
+      (hospitalization) conditions on a collider and creates spurious relationships.
+      This is why randomized controlled trials are gold standard for treatment evaluation!
+    `,
+    identifiedElements: {
+      mediator: "None",
+      confounder: "BaselineSeverity",
+      collider: "Hospitalization"
     }
   }
 ];

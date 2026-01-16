@@ -254,14 +254,13 @@ function createMultipleChoice(question, questionNum, scenario) {
     const id = `q${questionNum}-opt${optIndex}`;
     const isCorrect = optIndex === question.correctAnswer;
     html += `
-      <div class="option">
+      <div class="option" onclick="handleMultipleChoice(${questionNum}, ${optIndex})">
         <input
           type="radio"
           id="${id}"
           name="q${questionNum}"
           value="${optIndex}"
           data-correct="${isCorrect}"
-          onchange="handleMultipleChoice(${questionNum}, ${optIndex})"
         >
         <label for="${id}">${option}</label>
       </div>
@@ -288,7 +287,13 @@ function handleMultipleChoice(questionNum, optionIndex) {
   const headerEl = document.getElementById(`answer-header-${questionNum}`);
   const contentEl = document.getElementById(`answer-content-${questionNum}`);
 
-  // Show the answer box
+  // Select the correct radio button
+  const radioButton = document.getElementById(`q${questionNum}-opt${optionIndex}`);
+  if (radioButton) {
+    radioButton.checked = true;
+  }
+
+  // Always show the answer box (not toggle)
   answerBox.classList.add('show');
 
   if (isCorrect) {

@@ -305,5 +305,86 @@ const scenarios = [
         }
       ]
     }
+  },
+
+  {
+    id: 5,
+    title: "The Hospital Paradox",
+    subtitle: "Treatment, Severity, Recovery, and Selection Bias",
+    story: "Imagine you're analyzing a medical database to evaluate whether a new treatment for blood pressure actually works. You compare patients who received the treatment versus those who didn't, looking at who ended up needing hospitalization (as a marker of poor recovery). Surprisingly, you find that patients who received the treatment were MORE likely to be hospitalized! But here's the twist: the hospital only gave the treatment to the sickest patients (those with the highest baseline severity scores). So while the treatment actually helps, the sickest people get it. Additionally, hospitalization happens when recovery is poor—so by looking only at who was hospitalized, you're selecting a group where both the treatment and the disease severity are strongly represented, creating a spurious negative relationship between treatment and recovery. This is the hospital paradox: selection bias and confounding together can completely mask or reverse a treatment's true effect.",
+    variables: ["BaselineSeverity", "TreatmentReceived", "Recovery", "Hospitalization"],
+    causalStructure: {
+      description: "COMPLEX (Confounder + Collider)",
+      arrows: [
+        "BaselineSeverity → TreatmentReceived",
+        "BaselineSeverity → Recovery",
+        "TreatmentReceived → Recovery",
+        "Recovery → Hospitalization",
+        "TreatmentReceived → Hospitalization"
+      ],
+      explanation: "BaselineSeverity is a CONFOUNDER (causes both Treatment and Recovery). Hospitalization is a COLLIDER (caused by both TreatmentReceived and Recovery). This combination creates two sources of bias."
+    },
+    questions: [
+      {
+        id: 1,
+        type: "short",
+        prompt: "Draw the causal graph. What are the pathways and what role does each variable play?",
+        hint: "Think about what causes treatment assignment, what causes recovery, and what determines hospitalization. Is there a variable that affects multiple outcomes?",
+        answer: "BaselineSeverity → TreatmentReceived → Recovery ← BaselineSeverity. Hospitalization is caused by both TreatmentReceived and Recovery (collider). BaselineSeverity is a confounder.",
+        dagImage: "practice-causality/images/scenario5_dag.png"
+      },
+      {
+        id: 2,
+        type: "multiple-choice",
+        prompt: "If you regress Hospitalization on Treatment (observing the full patient dataset), what will you likely find?",
+        options: [
+          "Treatment increases hospitalization risk (appears harmful)",
+          "Treatment decreases hospitalization risk (appears helpful)",
+          "No relationship (unbiased estimate)",
+          "Strong positive relationship (very harmful)"
+        ],
+        correctAnswer: 0,
+        explanation: "The sickest patients get the treatment (confounder: severity causes treatment). The sickest patients are more likely to be hospitalized anyway. So treatment appears harmful even though it actually helps. This is confounding bias making the treatment look bad."
+      },
+      {
+        id: 3,
+        type: "multiple-choice",
+        prompt: "If you only look at hospitalized patients and regress Recovery on Treatment, what causal bias do you face?",
+        options: [
+          "Confounding (severity causes both treatment and recovery)",
+          "Collider bias (we've conditioned on a collider)",
+          "Mediation (treatment works through hospitalization)",
+          "Both confounding and collider bias"
+        ],
+        correctAnswer: 3,
+        explanation: "By selecting only hospitalized patients, you condition on a collider (Hospitalization is caused by both Treatment and Recovery). This CREATES spurious correlation between Treatment and Recovery. Additionally, the sickest patients (high severity) get treatment AND have poor recovery, so confounding still biases the relationship."
+      }
+    ],
+    identifiableElements: {
+      mediator: "None (Recovery is an outcome, not a mediator)",
+      confounder: "BaselineSeverity",
+      collider: "Hospitalization"
+    },
+    regressionAdvice: {
+      correct: [
+        {
+          spec: "Recovery ~ Treatment + BaselineSeverity",
+          interpretation: "Effect of treatment on recovery, controlling for baseline disease severity (the confounder)",
+          uses: "When you want to know: Does the treatment actually improve recovery, accounting for the fact that sicker patients get it?"
+        }
+      ],
+      incorrect: [
+        {
+          spec: "Recovery ~ Treatment (full dataset)",
+          interpretation: "WRONG: Confounded by BaselineSeverity",
+          problem: "Severity is a confounder. Sicker patients get the treatment. Their poor recovery is due to severity, not treatment quality. This estimate is biased downward."
+        },
+        {
+          spec: "Recovery ~ Treatment (only hospitalized patients)",
+          interpretation: "WRONG: Collider bias + confounding",
+          problem: "By selecting only hospitalized patients, you condition on a collider. This creates spurious associations. You're looking at the sickest people who got treatment and had poor outcomes, missing healthier people who recovered well."
+        }
+      ]
+    }
   }
 ];

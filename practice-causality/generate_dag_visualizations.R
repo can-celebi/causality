@@ -256,3 +256,101 @@ sink()
 cat("\n\n=== ALL VISUALIZATIONS AND RESULTS SAVED ===\n")
 cat("Images saved in: images/\n")
 cat("Results saved in: results/\n")
+
+# ============================================================================
+# SCENARIO 5: COMPLEX (CONFOUNDER + COLLIDER)
+# ============================================================================
+
+cat("\n=== SCENARIO 5: COMPLEX (CONFOUNDER + COLLIDER) ===\n")
+
+# Create synthetic data for hospital paradox scenario
+set.seed(42)
+n <- 500
+
+# Generate baseline severity (confounder)
+baseline_severity <- rnorm(n, mean = 50, sd = 15)
+
+# Treatment assignment: sicker patients more likely to get treatment
+treatment_prob <- plogis(-3 + 0.1 * baseline_severity)
+treatment_received <- rbinom(n, size = 1, prob = treatment_prob)
+
+# Recovery depends on baseline severity AND treatment
+recovery <- 70 + (-0.5) * treatment_received + 0.3 * baseline_severity + rnorm(n, mean = 0, sd = 5)
+recovery <- pmax(0, pmin(100, recovery))  # Keep between 0 and 100
+
+# Hospitalization: collider (caused by treatment AND recovery)
+hospitalization <- ifelse((recovery < 60) | (treatment_received == 1 & runif(n) < 0.3), 1, 0)
+
+data5 <- data.frame(
+  BaselineSeverity = baseline_severity,
+  TreatmentReceived = treatment_received,
+  Recovery = recovery,
+  Hospitalization = hospitalization
+)
+
+# Save CSV
+write.csv(data5, "data/scenario5_data.csv", row.names = FALSE)
+cat("✓ Data saved to: data/scenario5_data.csv\n")
+
+# Create DAG visualization
+dag_formula_5 <- "dag { 
+  BaselineSeverity -> TreatmentReceived
+  BaselineSeverity -> Recovery
+  TreatmentReceived -> Recovery
+  TreatmentReceived -> Hospitalization
+  Recovery -> Hospitalization
+}"
+dag5 <- dagitty(dag_formula_5)
+
+pdf("images/scenario5_dag.pdf", width = 8, height = 6)
+plot(dag5)
+title(main = "The Hospital Paradox: Treatment, Severity, Recovery, Hospitalization", cex.main = 1.5)
+dev.off()
+
+# TRUE MODEL COEFFICIENTS
+cat("\nTRUE UNDERLYING MODEL (used to generate data):\n")
+cat("  BaselineSeverity ~ N(50, 15²)\n")
+cat("  TreatmentReceived = ifelse(BaselineSeverity > 55, 1, 0)\n")
+cat("  Recovery = 70 + (-0.5) × TreatmentReceived + 0.3 × BaselineSeverity + ε  (ε ~ N(0, 5²))\n")
+cat("  Hospitalization = ifelse(Recovery < 60, 1, 0)  (collider)\n\n")
+
+cat("ESTIMATED MODELS (from regression):\n")
+cat("\nNaive specification (CONFOUNDED by BaselineSeverity):\n")
+model5_naive <- lm(Recovery ~ TreatmentReceived, data = data5)
+print(summary(model5_naive))
+
+cat("\nWrong specification (selection on COLLIDER):\n")
+data5_hosp <- data5[data5$Hospitalization == 1, ]
+model5_collider <- lm(Recovery ~ TreatmentReceived, data = data5_hosp)
+print(summary(model5_collider))
+
+cat("\nCorrect specification (controlling for confounder):\n")
+model5_correct <- lm(Recovery ~ TreatmentReceived + BaselineSeverity, data = data5)
+print(summary(model5_correct))
+
+# Save results
+sink("results/scenario5_regression_results.txt")
+cat("=== SCENARIO 5: COMPLEX (CONFOUNDER + COLLIDER) ===\n")
+cat("Story: Hospital Paradox - Medical treatment effectiveness in observational data\n\n")
+cat("NAIVE (WRONG): Recovery ~ TreatmentReceived\n")
+cat("Summary:\n")
+print(summary(model5_naive))
+cat("\nWhy wrong: BaselineSeverity is a confounder. Sicker patients get treatment.\n")
+cat("Their poor recovery is due to severity, not treatment quality.\n")
+
+cat("\n\nCOLLIDER BIAS (WRONG): Recovery ~ TreatmentReceived (only Hospitalization = 1)\n")
+cat("Summary:\n")
+print(summary(model5_collider))
+cat("\nWhy wrong: Hospitalization is a collider. By selecting only hospitalized patients,\n")
+cat("you condition on a collider and create spurious associations.\n")
+
+cat("\n\nCORRECT: Recovery ~ TreatmentReceived + BaselineSeverity\n")
+cat("Summary:\n")
+print(summary(model5_correct))
+cat("\nWhy correct: Controlling for BaselineSeverity removes the confounding bias.\n")
+cat("Now you can see the true effect of treatment on recovery.\n")
+
+cat("\nKEY LESSON: Observational studies in medicine face BOTH confounding AND collider bias.\n")
+cat("This is why randomized controlled trials are the gold standard.\n")
+sink()
+

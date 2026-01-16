@@ -5,6 +5,9 @@
 let currentScenarioIndex = 0;
 const totalScenarios = scenarios.length;
 
+// Store question metadata to avoid quote escaping issues in HTML attributes
+const questionData = {};
+
 // ============================================================================
 // Initialize Page
 // ============================================================================
@@ -240,10 +243,16 @@ function createQuestionCard(question, questionNum, scenario) {
 function createMultipleChoice(question, questionNum, scenario) {
   let html = '<div class="options">';
 
+  // Store question data in global object
+  questionData[questionNum] = {
+    correctAnswer: question.correctAnswer,
+    correctOptionText: question.options[question.correctAnswer],
+    explanation: question.explanation
+  };
+
   question.options.forEach((option, optIndex) => {
     const id = `q${questionNum}-opt${optIndex}`;
     const isCorrect = optIndex === question.correctAnswer;
-    const correctOption = question.options[question.correctAnswer];
     html += `
       <div class="option">
         <input
@@ -252,7 +261,7 @@ function createMultipleChoice(question, questionNum, scenario) {
           name="q${questionNum}"
           value="${optIndex}"
           data-correct="${isCorrect}"
-          onchange="toggleAnswer(${questionNum}, ${optIndex}, this.checked, ${isCorrect}, '${correctOption.replace(/'/g, "\\'")}', '${question.explanation.replace(/'/g, "\\'")}')"
+          onchange="handleMultipleChoice(${questionNum}, ${optIndex})"
         >
         <label for="${id}">${option}</label>
       </div>
@@ -272,11 +281,36 @@ function createMultipleChoice(question, questionNum, scenario) {
   return html;
 }
 
+function handleMultipleChoice(questionNum, optionIndex) {
+  const data = questionData[questionNum];
+  const isCorrect = optionIndex === data.correctAnswer;
+  const answerBox = document.getElementById(`answer-${questionNum}`);
+  const headerEl = document.getElementById(`answer-header-${questionNum}`);
+  const contentEl = document.getElementById(`answer-content-${questionNum}`);
+
+  // Show the answer box
+  answerBox.classList.add('show');
+
+  if (isCorrect) {
+    // Correct answer
+    headerEl.innerHTML = '✓ Correct Answer';
+    contentEl.innerHTML = data.explanation;
+    answerBox.classList.add('answer-correct');
+    answerBox.classList.remove('answer-incorrect');
+  } else {
+    // Wrong answer
+    headerEl.innerHTML = '✗ False Answer';
+    contentEl.innerHTML = `<strong>Correct answer is:</strong> ${data.correctOptionText}<br><br>${data.explanation}`;
+    answerBox.classList.add('answer-incorrect');
+    answerBox.classList.remove('answer-correct');
+  }
+}
+
 function createShortAnswerQuestion(question, questionNum, scenario) {
   let html = `
     <button
       class="show-answer-btn"
-      onclick="toggleAnswer(${questionNum}, null, true)"
+      onclick="toggleShortAnswer(${questionNum})"
     >
       Show Answer
     </button>
@@ -299,47 +333,24 @@ function createShortAnswerQuestion(question, questionNum, scenario) {
   return html;
 }
 
-// ============================================================================
-// Toggle Answer Visibility
-// ============================================================================
-
-function toggleAnswer(questionNum, optionIndex, show, isCorrect, correctOption, explanation) {
+function toggleShortAnswer(questionNum) {
   const answerBox = document.getElementById(`answer-${questionNum}`);
-  const headerEl = document.getElementById(`answer-header-${questionNum}`);
-  const contentEl = document.getElementById(`answer-content-${questionNum}`);
+  const button = event.target;
 
   if (answerBox.classList.contains('show')) {
     answerBox.classList.remove('show');
+    button.textContent = 'Show Answer';
+    button.classList.remove('answered');
   } else {
     answerBox.classList.add('show');
-
-    // Update content and styling based on correctness
-    if (typeof isCorrect !== 'undefined' && optionIndex !== null) {
-      if (isCorrect) {
-        // Correct answer
-        headerEl.innerHTML = '✓ Correct Answer';
-        contentEl.innerHTML = explanation;
-        answerBox.classList.add('answer-correct');
-        answerBox.classList.remove('answer-incorrect');
-      } else {
-        // Wrong answer
-        headerEl.innerHTML = '✗ False Answer';
-        contentEl.innerHTML = `<strong>Correct answer is:</strong> ${correctOption}<br><br>${explanation}`;
-        answerBox.classList.add('answer-incorrect');
-        answerBox.classList.remove('answer-correct');
-      }
-    }
-
-    // Update button text if it exists
-    const buttons = document.querySelectorAll('.show-answer-btn');
-    buttons.forEach(btn => {
-      if (btn.onclick.toString().includes(questionNum)) {
-        btn.classList.add('answered');
-        btn.textContent = 'Hide Answer';
-      }
-    });
+    button.textContent = 'Hide Answer';
+    button.classList.add('answered');
   }
 }
+
+// ============================================================================
+// Toggle Answer Visibility
+// ============================================================================
 
 // ============================================================================
 // Navigation Between Scenarios

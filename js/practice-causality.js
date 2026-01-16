@@ -69,35 +69,7 @@ function loadScenario(index) {
 function renderAnswers(scenario, scenarioIndex) {
   const answers = scenarioAnswers[scenarioIndex];
 
-  // True model
-  if (answers.trueModel) {
-    let trueModelSection = `
-      <div class="answer-card">
-        <h3>📋 True Underlying Model</h3>
-        ${answers.trueModel}
-      </div>
-    `;
-    // Insert before causal description
-    document.getElementById('answers-section').insertAdjacentHTML('beforeend', trueModelSection);
-  }
-
-  // CSV Download
-  if (answers.csvFile) {
-    let csvSection = `
-      <div class="answer-card" style="background: #e8f5e9; border-left-color: #4caf50;">
-        <h3>📊 Practice with Real Data</h3>
-        <p>Download the dataset used in this scenario and try running the regressions yourself!</p>
-        <a href="${answers.csvFile}" download class="download-btn-small">
-          ⬇️ Download CSV Data
-        </a>
-        <p style="font-size: 0.9rem; color: #555; margin-top: 10px;">
-          <strong>Challenge:</strong> Download the CSV, load it into R or your favorite stats tool,<br>
-          and figure out which regression gives the correct coefficients!
-        </p>
-      </div>
-    `;
-    document.getElementById('answers-section').insertAdjacentHTML('beforeend', csvSection);
-  }
+  // Note: True model is now shown in the CSV Practice section with clickable toggle
 
   // Causal description
   document.getElementById('causal-description').innerHTML = answers.causalStructureDescription;
@@ -176,7 +148,70 @@ function renderQuestions(scenario) {
   scenario.questions.forEach((question, qIndex) => {
     const questionCard = createQuestionCard(question, qIndex + 1, scenario);
     container.appendChild(questionCard);
+
+    // After first question, add the CSV/Real Data practice section
+    if (qIndex === 0) {
+      const csvSection = createCSVPracticeSection(scenario);
+      container.appendChild(csvSection);
+    }
   });
+}
+
+function createCSVPracticeSection(scenario) {
+  const answers = scenarioAnswers[currentScenarioIndex];
+  const section = document.createElement('div');
+  section.className = 'csv-practice-section';
+
+  let html = `
+    <div style="background: #e8f5e9; border-left: 4px solid #4caf50; padding: 25px; margin: 25px 0; border-radius: 8px;">
+      <h3 style="color: #2e7d32; margin-top: 0;">📊 Practice with Real Data</h3>
+      <p style="color: #1b5e20; margin: 10px 0;">
+        Download the dataset used in this scenario and try to estimate the <strong>true underlying model</strong>.
+      </p>
+  `;
+
+  if (answers.csvFile) {
+    html += `
+      <a href="${answers.csvFile}" download class="download-btn-small">
+        ⬇️ Download CSV Data
+      </a>
+      <p style="font-size: 0.9rem; color: #555; margin-top: 10px;">
+        <strong>Challenge:</strong> Load the data into R or your favorite stats tool and figure out which regression gives the correct coefficients!
+      </p>
+    `;
+  }
+
+  // Add clickable true model section
+  if (answers.trueModel) {
+    const modelId = `true-model-${currentScenarioIndex}`;
+    html += `
+      <div style="margin-top: 15px; padding: 15px; background: white; border-radius: 5px; border: 1px solid #4caf50;">
+        <button onclick="toggleTrueModel('${modelId}')" style="background: none; border: none; cursor: pointer; width: 100%; text-align: left; padding: 0;">
+          <strong style="color: #2e7d32;">📋 Click to see: What is the true underlying model?</strong>
+          <span id="toggle-icon-${modelId}" style="float: right; color: #2e7d32;">▼</span>
+        </button>
+        <div id="${modelId}" style="display: none; margin-top: 10px;">
+          ${answers.trueModel}
+        </div>
+      </div>
+    `;
+  }
+
+  html += '</div>';
+  section.innerHTML = html;
+  return section;
+}
+
+function toggleTrueModel(modelId) {
+  const element = document.getElementById(modelId);
+  const icon = document.getElementById(`toggle-icon-${modelId}`);
+  if (element.style.display === 'none') {
+    element.style.display = 'block';
+    icon.textContent = '▲';
+  } else {
+    element.style.display = 'none';
+    icon.textContent = '▼';
+  }
 }
 
 function createQuestionCard(question, questionNum, scenario) {
@@ -208,6 +243,7 @@ function createMultipleChoice(question, questionNum, scenario) {
   question.options.forEach((option, optIndex) => {
     const id = `q${questionNum}-opt${optIndex}`;
     const isCorrect = optIndex === question.correctAnswer;
+    const correctOption = question.options[question.correctAnswer];
     html += `
       <div class="option">
         <input
@@ -216,7 +252,7 @@ function createMultipleChoice(question, questionNum, scenario) {
           name="q${questionNum}"
           value="${optIndex}"
           data-correct="${isCorrect}"
-          onchange="toggleAnswer(${questionNum}, ${optIndex}, this.checked, ${isCorrect})"
+          onchange="toggleAnswer(${questionNum}, ${optIndex}, this.checked, ${isCorrect}, '${correctOption.replace(/'/g, "\\'")}', '${question.explanation.replace(/'/g, "\\'")}')"
         >
         <label for="${id}">${option}</label>
       </div>
@@ -228,8 +264,8 @@ function createMultipleChoice(question, questionNum, scenario) {
   // Add answer section
   html += `
     <div id="answer-${questionNum}" class="answer-box">
-      <h4>✓ Correct Answer</h4>
-      <p>${question.explanation}</p>
+      <h4 id="answer-header-${questionNum}">✓ Correct Answer</h4>
+      <p id="answer-content-${questionNum}">${question.explanation}</p>
     </div>
   `;
 
@@ -267,20 +303,28 @@ function createShortAnswerQuestion(question, questionNum, scenario) {
 // Toggle Answer Visibility
 // ============================================================================
 
-function toggleAnswer(questionNum, optionIndex, show, isCorrect) {
+function toggleAnswer(questionNum, optionIndex, show, isCorrect, correctOption, explanation) {
   const answerBox = document.getElementById(`answer-${questionNum}`);
+  const headerEl = document.getElementById(`answer-header-${questionNum}`);
+  const contentEl = document.getElementById(`answer-content-${questionNum}`);
 
   if (answerBox.classList.contains('show')) {
     answerBox.classList.remove('show');
   } else {
     answerBox.classList.add('show');
 
-    // Update styling based on correctness
-    if (typeof isCorrect !== 'undefined') {
+    // Update content and styling based on correctness
+    if (typeof isCorrect !== 'undefined' && optionIndex !== null) {
       if (isCorrect) {
+        // Correct answer
+        headerEl.innerHTML = '✓ Correct Answer';
+        contentEl.innerHTML = explanation;
         answerBox.classList.add('answer-correct');
         answerBox.classList.remove('answer-incorrect');
       } else {
+        // Wrong answer
+        headerEl.innerHTML = '✗ False Answer';
+        contentEl.innerHTML = `<strong>Correct answer is:</strong> ${correctOption}<br><br>${explanation}`;
         answerBox.classList.add('answer-incorrect');
         answerBox.classList.remove('answer-correct');
       }

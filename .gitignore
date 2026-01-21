@@ -1,6 +1,9 @@
 # Directories to ignore
 Operational/
 .claude/
+textbook/
+Session\ 2/Materials/
+Session\ 2/claude/oldMaterial.R
 
 # R project files
 *.Rproj

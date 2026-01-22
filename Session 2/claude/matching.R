@@ -60,6 +60,15 @@ n <- 900
 w <- sample(c(0, 1), n, replace = TRUE)  # Unobserved - we pretend not to know this
 z <- rnorm(n = n, mean = 5)              # Observed - this we can use for matching
 
+
+# -- SIDE QUEST ---
+
+# --- How do they look like? ---
+
+# let's make a df
+df <- data.frame(w = w, z = z)
+
+
 # ------------------------------------------------------------------------------
 # 1.2 Generate Treatment (CONFOUNDED assignment)
 # ------------------------------------------------------------------------------
@@ -71,7 +80,7 @@ z <- rnorm(n = n, mean = 5)              # Observed - this we can use for matchi
 # from control units BEFORE treatment even happens.
 # ------------------------------------------------------------------------------
 
-Tstar <- 3 * w + z + rnorm(n = n)        # Latent propensity
+Tstar <- 3 * w + z + rnorm(n = n)        # Latent var
 Treat <- ifelse(Tstar > 6.5, 1, 0)       # Treatment assignment (binary)
 
 # Check treatment proportions
@@ -110,8 +119,117 @@ obsData <- data.frame(
 )
 
 # Quick look at the data
+nrow(obsData)
 head(obsData)
 summary(obsData)
+
+
+# ------------------------------------------------------------------------------
+# 1.4.a Treatment Assignment (Selection Check)
+# ------------------------------------------------------------------------------
+# If treatment were random, counts would be roughly balanced.
+# Here imbalance is expected because Treat depends on Tstar.
+
+ggplot(obsData, aes(x = factor(Treat))) +
+  geom_bar(fill = "darkgreen") +
+  labs(
+    title = "1.4.a Treatment Assignment (Observational Data)",
+    x = "Treat (0 = Control, 1 = Treated)",
+    y = "Count"
+  ) +
+  theme_minimal()
+
+
+# ------------------------------------------------------------------------------
+# 1.4.b Covariate z by Treatment
+# ------------------------------------------------------------------------------
+# Differences here indicate selection on observables.
+# z influences treatment via the latent index Tstar.
+
+ggplot(obsData, aes(x = factor(Treat), y = z)) +
+  geom_boxplot(fill = "skyblue") +
+  labs(
+    title = "1.4.b Covariate z by Treatment Status",
+    x = "Treat",
+    y = "z"
+  ) +
+  theme_minimal()
+
+
+# ------------------------------------------------------------------------------
+# 1.4.c Distribution of z by Treatment (Common Support)
+# ------------------------------------------------------------------------------
+# Limited overlap means extrapolation risk in causal estimation.
+
+ggplot(obsData, aes(x = z, fill = factor(Treat))) +
+  geom_density(alpha = 0.5) +
+  labs(
+    title = "1.4.c Distribution of z by Treatment",
+    fill = "Treat"
+  ) +
+  theme_minimal()
+
+
+# ------------------------------------------------------------------------------
+# 1.4.d Outcome y by Treatment (Naïve Comparison)
+# ------------------------------------------------------------------------------
+# This difference mixes:
+#   - true treatment effect
+#   - effect of unobserved w
+#   - effect of z
+# Therefore it is NOT causal.
+
+ggplot(obsData, aes(x = factor(Treat), y = y)) +
+  geom_boxplot(fill = "orange") +
+  labs(
+    title = "1.4.d Outcome y by Treatment (Naïve Comparison)",
+    x = "Treat",
+    y = "y"
+  ) +
+  theme_minimal()
+
+
+# ------------------------------------------------------------------------------
+# 1.4.e Outcome vs Covariate by Treatment
+# ------------------------------------------------------------------------------
+# Shows how y varies with z within each treatment group.
+# Helps build intuition for regression adjustment.
+
+ggplot(obsData, aes(x = z, y = y, color = factor(Treat))) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(
+    title = "1.4.e Outcome vs Covariate by Treatment",
+    x = "z",
+    y = "y",
+    color = "Treat"
+  ) +
+  theme_minimal()
+
+
+# ------------------------------------------------------------------------------
+# 1.4.f Latent Selection Variable (Simulation Insight Only)
+# ------------------------------------------------------------------------------
+# Tstar is NOT observable in real data.
+# This plot exists only to verify how selection into treatment works.
+
+latent <- data.frame(
+  Tstar = Tstar,
+  Treat = Treat,
+  y = y
+)
+
+ggplot(latent, aes(x = Tstar, y = y, color = factor(Treat))) +
+  geom_point(alpha = 0.5) +
+  geom_vline(xintercept = 6.5, linetype = "dashed") +
+  labs(
+    title = "1.4.f Latent Selection Variable and Outcome",
+    subtitle = "Dashed line = treatment threshold",
+    color = "Treat"
+  ) +
+  theme_minimal()
+
+
 
 # ------------------------------------------------------------------------------
 # 1.5 Generate Experimental Benchmark (for comparison)
@@ -132,9 +250,88 @@ expData <- data.frame(
 
 # Experimental estimate (should be close to 2)
 expModel <- lm(y ~ Treat, data = expData)
+
+summary(expModel)
+
 cat("\n--- Experimental Benchmark ---\n")
 cat("Estimated effect:", round(coef(expModel)["Treat"], 3), "\n")
 cat("(True effect is 2)\n")
+
+
+
+# GRAPHS
+
+# ------------------------------------------------------------------------------
+# 1.5.1.a Treatment Assignment (Balance Check)
+# ------------------------------------------------------------------------------
+
+ggplot(expData, aes(x = factor(Treat))) +
+  geom_bar(fill = "darkgreen") +
+  labs(
+    title = "1.5.1.a Treatment Assignment (Randomized)",
+    x = "Treat (0 = Control, 1 = Treated)",
+    y = "Count"
+  ) +
+  theme_minimal()
+
+
+# ------------------------------------------------------------------------------
+# 1.5.1.b Covariate Balance: z by Treatment
+# ------------------------------------------------------------------------------
+
+ggplot(expData, aes(x = factor(Treat), y = z)) +
+  geom_boxplot(fill = "skyblue") +
+  labs(
+    title = "1.5.1.b Covariate z by Treatment",
+    subtitle = "Random assignment ⇒ similar distributions",
+    x = "Treat",
+    y = "z"
+  ) +
+  theme_minimal()
+
+
+# ------------------------------------------------------------------------------
+# 1.5.1.c Common Support: Density of z by Treatment
+# ------------------------------------------------------------------------------
+
+ggplot(expData, aes(x = z, fill = factor(Treat))) +
+  geom_density(alpha = 0.5) +
+  labs(
+    title = "1.5.1.c Distribution of z by Treatment",
+    fill = "Treat"
+  ) +
+  theme_minimal()
+
+
+# ------------------------------------------------------------------------------
+# 1.5.1.d Outcome by Treatment (Causal Difference)
+# ------------------------------------------------------------------------------
+
+ggplot(expData, aes(x = factor(Treat), y = y)) +
+  geom_boxplot(fill = "orange") +
+  labs(
+    title = "1.5.1.d Outcome y by Treatment",
+    subtitle = "Difference reflects causal effect",
+    x = "Treat",
+    y = "y"
+  ) +
+  theme_minimal()
+
+
+# ------------------------------------------------------------------------------
+# 1.5.1.e Outcome vs Covariate by Treatment
+# ------------------------------------------------------------------------------
+
+ggplot(expData, aes(x = z, y = y, color = factor(Treat))) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(
+    title = "1.5.1.e Outcome vs Covariate (Experimental Data)",
+    x = "z",
+    y = "y",
+    color = "Treat"
+  ) +
+  theme_minimal()
 
 
 # ==============================================================================
@@ -151,8 +348,10 @@ cat("(True effect is 2)\n")
 # ------------------------------------------------------------------------------
 
 naiveModel <- lm(y ~ Treat, data = obsData)
+
 cat("\n--- Naive Comparison (Biased) ---\n")
 summary(naiveModel)
+
 cat("\nEstimated effect:", round(coef(naiveModel)["Treat"], 3))
 cat("\nBias:", round(coef(naiveModel)["Treat"] - 2, 3), "\n")
 
@@ -198,7 +397,6 @@ cat("Unique values of z (rounded):", length(unique(obsData$zRounded)), "\n")
 
 # Cross-tabulate treatment by z values
 table(obsData$Treat, obsData$zRounded)
-# Notice: many cells have 0s - no matches possible!
 
 # With more covariates, this problem gets exponentially worse.
 # This is the "curse of dimensionality."
@@ -246,6 +444,8 @@ cat("Observations discarded:", nrow(obsData) - nrow(cemData), "\n")
 # Estimate effect using matched data
 # Note: We use weights because CEM may weight observations differently
 cemModel <- lm(y ~ Treat, data = cemData, weights = weights)
+summary(cemModel)
+
 cat("\nEstimated effect (CEM):", round(coef(cemModel)["Treat"], 3))
 cat("\nBias:", round(coef(cemModel)["Treat"] - 2, 3), "\n")
 
@@ -334,7 +534,7 @@ psmResult <- Match(
   Tr = obsData$Treat,      # Treatment indicator (1 = treated, 0 = control)
   X = obsData$pscore,      # Matching variable (propensity score)
   estimand = "ATT",         # Average Treatment effect on the Treated
-  replace = TRUE,           # Allow matching with replacement
+  replace = TRUE,           # Allow matching with replacement (control vars can be used multiple times)
   M = 1                     # 1-to-1 matching
 )
 
@@ -605,6 +805,7 @@ zControl <- obsData$z[obsData$Treat == 0]
 # Calculate SMD manually
 meanTreated <- mean(zTreated)
 meanControl <- mean(zControl)
+
 # Pooled standard deviation (there are slightly different formulas; this is common)
 pooledSd <- sqrt((var(zTreated) + var(zControl)) / 2)
 
@@ -669,8 +870,6 @@ rm(age, income, testScore, nExample, ageStandardized)
 rm(plotOriginal, plotStandardized, pOriginal, pStandardized, pOverlay)
 rm(zTreated, zControl, meanTreated, meanControl, pooledSd, smdManual, smdPlotData, pSmd)
 
-cat("\n--- End of Standardization Sidebar ---\n")
-cat("Now you understand why Standardized Mean Difference is so useful for balance!\n\n")
 
 
 # ==============================================================================
@@ -867,11 +1066,32 @@ love.plot(
 
 # READING THE LOVE PLOT:
 # ----------------------
-# - X-axis: Absolute Standardized Mean Difference
-# - Y-axis: Covariates
-# - Two points per covariate: Before (unadjusted) and After (adjusted) matching
-# - Vertical dashed line at 0.1 = threshold for "good" balance
-# - Goal: All "after" points should be left of the threshold line
+# - X-axis: Absolute Standardized Mean Difference (SMD)
+#   Measures how different treated and control groups are, in SD units
+#   0 = perfect balance; values closer to 0 are better
+#
+# - Y-axis: Variables checked for balance
+#   Includes:
+#     * z        : observed covariate used in matching
+#     * distance : estimated propensity score (Pr[Treat = 1 | z])
+#       -> not a new covariate, but the matching metric itself
+#
+# - Two points per variable:
+#     * Unadjusted (before matching)
+#     * Adjusted   (after matching)
+#   Movement toward 0 indicates improved balance due to matching
+#
+# - Vertical dashed line at 0.1:
+#     * Common rule-of-thumb threshold for acceptable balance (convention not a rule)
+#     * Points to the right indicate meaningful imbalance
+#
+# - Interpretation goal:
+#     * All "after" (adjusted) points should lie well left of 0.1
+#     * Balance on both z AND distance confirms successful matching
+#
+# - Important caveat:
+#     * Good balance here only addresses selection on observables
+#     * Unobserved confounders (e.g., w) may still bias the ATT
 
 
 # ------------------------------------------------------------------------------
@@ -889,6 +1109,8 @@ cat("\n--- Manual T-Test for Balance on z ---\n")
 
 # Before matching
 tBefore <- t.test(z ~ Treat, data = obsData)
+tBefore
+
 cat("BEFORE matching:\n")
 cat("  Mean (Treated):", round(mean(obsData$z[obsData$Treat == 1]), 3), "\n")
 cat("  Mean (Control):", round(mean(obsData$z[obsData$Treat == 0]), 3), "\n")
@@ -899,6 +1121,8 @@ cat("  p-value:", format(tBefore$p.value, scientific = TRUE, digits = 3), "\n")
 
 # After matching
 tAfter <- t.test(zTreatedMatched, zControlMatched)
+tAfter
+
 cat("\nAFTER matching:\n")
 cat("  Mean (Treated):", round(mean(zTreatedMatched), 3), "\n")
 cat("  Mean (Control):", round(mean(zControlMatched), 3), "\n")
@@ -928,6 +1152,9 @@ ksBefore <- ks.test(
   obsData$z[obsData$Treat == 1],
   obsData$z[obsData$Treat == 0]
 )
+
+ksBefore
+
 cat("BEFORE matching:\n")
 cat("  KS Statistic (D):", round(ksBefore$statistic, 3), "\n")
 cat("  p-value:", format(ksBefore$p.value, scientific = TRUE, digits = 3), "\n")
@@ -935,6 +1162,9 @@ cat("  p-value:", format(ksBefore$p.value, scientific = TRUE, digits = 3), "\n")
 
 # After matching
 ksAfter <- ks.test(zTreatedMatched, zControlMatched)
+
+ksAfter
+
 cat("\nAFTER matching:\n")
 cat("  KS Statistic (D):", round(ksAfter$statistic, 3), "\n")
 cat("  p-value:", format(ksAfter$p.value, scientific = TRUE, digits = 3), "\n")
@@ -950,6 +1180,88 @@ cat("  p-value:", format(ksAfter$p.value, scientific = TRUE, digits = 3), "\n")
 # IMPORTANT: After matching with replacement, the KS test p-value from ks.test()
 # is not strictly valid because matched observations are not independent.
 # The bootstrap KS p-value from MatchBalance() is more appropriate.
+
+
+# ------------------------------------------------------------------------------
+# VISUALIZING DISTRIBUTIONS FOR KS TEST INTUITION
+# ------------------------------------------------------------------------------
+# The KS test compares the ENTIRE distribution of z across groups.
+# Histograms and density plots help us see *why* the KS test rejects or not.
+
+# ------------------------------------------------------------------------------
+# BEFORE MATCHING: z by Treatment
+# ------------------------------------------------------------------------------
+# Expectation:
+# - Distributions are shifted
+# - KS test rejects equality of distributions
+
+ggplot(obsData, aes(x = z, fill = factor(Treat))) +
+  geom_histogram(
+    bins = 30,
+    alpha = 0.5,
+    position = "identity"
+  ) +
+  labs(
+    title = "Before Matching: Distribution of z by Treatment",
+    subtitle = "Visible distributional differences → KS test rejects",
+    x = "z",
+    fill = "Treat"
+  ) +
+  theme_minimal()
+
+
+# ------------------------------------------------------------------------------
+# AFTER MATCHING: z by Treatment
+# ------------------------------------------------------------------------------
+# Construct matched dataset explicitly
+# KS test and QQ statistics are based on matched observations only.
+
+matchedData <- data.frame(
+  z = c(
+    obsData$z[psmResult$index.treated],
+    obsData$z[psmResult$index.control]
+  ),
+  Treat = factor(
+    c(
+      rep(1, length(psmResult$index.treated)),
+      rep(0, length(psmResult$index.control))
+    )
+  )
+)
+
+# Expectation:
+# - Distributions almost perfectly overlap
+# - KS test does NOT reject equality
+
+ggplot(matchedData, aes(x = z, fill = Treat)) +
+  geom_histogram(
+    bins = 30,
+    alpha = 0.5,
+    position = "identity"
+  ) +
+  labs(
+    title = "After Matching: Distribution of z by Treatment",
+    subtitle = "Near-identical distributions → KS test does not reject",
+    x = "z",
+    fill = "Treat"
+  ) +
+  theme_minimal()
+
+
+# ------------------------------------------------------------------------------
+# DENSITY PLOTS (CLEARER VIEW OF DISTRIBUTIONAL OVERLAP)
+# ------------------------------------------------------------------------------
+# Density plots approximate the empirical CDFs used by the KS test.
+
+ggplot(matchedData, aes(x = z, color = Treat)) +
+  geom_density(size = 1) +
+  labs(
+    title = "After Matching: Density of z by Treatment",
+    subtitle = "Small maximum CDF distance → small KS statistic",
+    x = "z",
+    color = "Treat"
+  ) +
+  theme_minimal()
 
 
 # ------------------------------------------------------------------------------

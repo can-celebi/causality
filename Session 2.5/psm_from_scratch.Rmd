@@ -1,0 +1,1052 @@
+---
+title: "Propensity Score Matching from Scratch"
+author: "Causal Inference Course"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    theme: flatly
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width = 8, fig.height = 5)
+library(ggplot2)
+library(knitr)
+```
+
+# Introduction
+
+This tutorial implements propensity score matching manually to understand exactly what happens at each step. We'll use explicit for loops instead of package functions to make the process transparent.
+
+## Learning Objectives
+
+1.  Understand why logistic regression is used for propensity scores
+2.  Calculate propensity scores manually using the sigmoid function
+3.  Implement nearest-neighbor matching with a for loop
+4.  Assess balance improvement after matching
+5.  Estimate treatment effects before and after matching
+6.  Understand when matching outperforms regression adjustment
+
+------------------------------------------------------------------------
+
+# The Story: Does Using AI Assistants Boost Your Starting Salary?
+
+## Context
+
+It's 2026, and public policy master's students are debating whether using AI assistants (for writing policy briefs, analyzing data, summarizing research) actually helps their career outcomes. Some say it boosts productivity; others worry it creates dependency and hurts deep learning.
+
+## The Question
+
+**Does regularly using AI assistants during your master's program CAUSE higher starting salaries at your first policy job?**
+
+## The Challenge
+
+Students who adopt AI tools might already be different in ways that affect both their tool adoption AND their job outcomes. This is **CONFOUNDING**.
+
+## Variables
+
+| Variable | Type | Description | Role |
+|-----------------|-----------------|---------------------|-----------------|
+| `ai_user` | Binary | Regularly used AI assistant (1=yes, 0=no) | Treatment |
+| `salary` | Continuous | Starting salary in \$1,000s | Outcome |
+| `prior_exp` | Continuous | Years of work experience before master's | Observed confounder |
+| `quant_skills` | Continuous | Quantitative/stats ability (standardized) | Observed confounder |
+| `stem_background` | Continuous | STEM affinity score (noisy measure) | Observed confounder |
+| `curiosity` | Continuous | Intellectual curiosity (Need for Cognition) | Unobserved confounder |
+| `tech_readiness` | Continuous | Comfort with technology (Lam et al., 2008) | Unobserved confounder |
+| `ai_aversion` | Continuous | Skepticism/fear of AI (Schepman & Rodway, 2020) | Unobserved confounder |
+
+**TRUE CAUSAL EFFECT: Using AI adds \$2,000 to starting salary**
+
+------------------------------------------------------------------------
+
+# Part 0: Setup
+
+```{r setup-params}
+set.seed(123)
+n <- 1000
+trueEffect <- 2  # True causal effect: $2,000
+```
+
+-   **Sample size:** `r n` public policy master's students
+-   **True causal effect:** \$`r trueEffect * 1000` (we know this because it's simulated)
+
+------------------------------------------------------------------------
+
+# Part 1: Data Generation (Imbalanced Observational Data)
+
+We create data where AI adoption is **confounded** - certain characteristics make students both more likely to use AI AND more likely to get higher salaries.
+
+## 1.1 Generate OBSERVED Confounders
+
+These are variables we can measure and control for.
+
+```{r observed-confounders}
+# Prior work experience (0-8 years, most students have 1-3)
+prior_exp <- pmax(0, rnorm(n, mean = 2, sd = 1.5))
+
+# Quantitative skills (standardized, mean=0, sd=1)
+quant_skills <- rnorm(n, mean = 0, sd = 1)
+
+# STEM background - noisy measure
+# True STEM affinity is latent; we only observe a noisy version
+stem_true <- rnorm(n, mean = 0, sd = 1)
+stem_background <- stem_true + rnorm(n, mean = 0, sd = 0.5)
+```
+
+Summary of observed confounders:
+
+-   **prior_exp:** Years of work experience (mean = `r round(mean(prior_exp), 2)`)
+-   **quant_skills:** Quantitative ability, standardized (mean = `r round(mean(quant_skills), 2)`)
+-   **stem_background:** STEM affinity, noisy measure (mean = `r round(mean(stem_background), 2)`)
+
+## 1.2 Generate UNOBSERVED Confounders
+
+These exist but we can't measure them in real life. Since this is a simulation, we can create them and see what happens.
+
+```{r unobserved-confounders}
+# Intellectual curiosity (Need for Cognition scale, standardized)
+curiosity <- rnorm(n, mean = 0, sd = 1)
+
+# Technology readiness (Lam et al., 2008 - innovativeness + optimism)
+tech_readiness <- rnorm(n, mean = 0, sd = 1)
+
+# AI aversion (Schepman & Rodway, 2020 - negative attitudes toward AI)
+# Higher = more skeptical/fearful of AI
+ai_aversion <- rnorm(n, mean = 0, sd = 1)
+```
+
+## 1.3 Treatment Assignment (Who Uses AI?)
+
+Students with certain characteristics are more likely to adopt AI tools.
+
+**Note:** `ai_aversion` has a **NEGATIVE** coefficient - averse students AVOID AI.
+
+```{r treatment-assignment}
+treatLatent <- 0.3 * prior_exp +
+               0.5 * quant_skills +
+               0.8 * stem_background +
+               0.4 * curiosity +
+               0.7 * tech_readiness +
+               (-0.6) * ai_aversion +  # NEGATIVE: averse students avoid AI
+               rnorm(n, 0, 1)
+
+# Use quantile threshold to get approximately 35% treated
+threshold <- quantile(treatLatent, 0.65)
+ai_user <- ifelse(treatLatent > threshold, 1, 0)
+```
+
+**AI adoption:**
+
+-   AI users: `r sum(ai_user)` (`r round(mean(ai_user) * 100, 1)`%)
+-   Non-users: `r sum(ai_user == 0)` (`r round(mean(ai_user == 0) * 100, 1)`%)
+
+## 1.4 Outcome Generation (Salary) - WITH NON-LINEARITY
+
+Salary depends on treatment AND confounders. We add **NON-LINEAR** effects so that regression adjustment won't work as well as matching!
+
+```{r outcome-generation}
+# Base salary around $45,000 for policy jobs
+base_salary <- 45
+
+salary <- base_salary +
+          trueEffect * ai_user +              # TRUE CAUSAL EFFECT = $2,000
+          1.0 * prior_exp +                   # Experience helps
+          0.8 * prior_exp^2 +                 # NON-LINEAR: strong quadratic effect
+          1.5 * quant_skills +                # Quant skills valued
+          1.0 * stem_background +             # STEM background helps
+          1.5 * quant_skills * stem_background + # STRONG INTERACTION effect
+          1.2 * curiosity +                   # Curious people do better
+          0.8 * tech_readiness +              # Tech-ready valued in 2026
+          (-0.5) * ai_aversion +              # AI-averse seen as less adaptable
+          rnorm(n, 0, 2)                      # Random noise
+```
+
+-   **True causal effect of AI use:** \$`r trueEffect * 1000`
+-   **Average salary:** \$`r format(round(mean(salary) * 1000), big.mark = ",")`
+
+## 1.5 Create Data Frame
+
+```{r create-dataframe}
+df <- data.frame(
+  id = 1:n,
+  ai_user = ai_user,
+  prior_exp = prior_exp,
+  quant_skills = quant_skills,
+  stem_background = stem_background,
+  curiosity = curiosity,
+  tech_readiness = tech_readiness,
+  ai_aversion = ai_aversion,
+  salary = salary
+)
+```
+
+## 1.6 Verify Imbalance
+
+Let's check that our groups are actually different (imbalanced).
+
+```{r smd-function}
+# SMD calculation function
+calcSMD <- function(x, treat) {
+  meanT <- mean(x[treat == 1])
+  meanC <- mean(x[treat == 0])
+  sdT <- sd(x[treat == 1])
+  sdC <- sd(x[treat == 0])
+  pooledSD <- sqrt((sdT^2 + sdC^2) / 2)
+  smd <- (meanT - meanC) / pooledSD
+  return(smd)
+}
+
+# Calculate SMDs for observed confounders
+smd1 <- calcSMD(prior_exp, ai_user)
+smd2 <- calcSMD(quant_skills, ai_user)
+smd3 <- calcSMD(stem_background, ai_user)
+```
+
+### Observed Confounders Balance
+
+```{r observed-balance-table}
+# Perform t-tests
+ttest1 <- t.test(prior_exp[ai_user == 1], prior_exp[ai_user == 0])
+ttest2 <- t.test(quant_skills[ai_user == 1], quant_skills[ai_user == 0])
+ttest3 <- t.test(stem_background[ai_user == 1], stem_background[ai_user == 0])
+
+balance_observed <- data.frame(
+  Variable = c("prior_exp", "quant_skills", "stem_background"),
+  Mean_AI_User = round(c(mean(prior_exp[ai_user == 1]),
+                         mean(quant_skills[ai_user == 1]),
+                         mean(stem_background[ai_user == 1])), 2),
+  Mean_Non_User = round(c(mean(prior_exp[ai_user == 0]),
+                          mean(quant_skills[ai_user == 0]),
+                          mean(stem_background[ai_user == 0])), 2),
+  SMD = round(c(smd1, smd2, smd3), 3),
+  t_test_p = format(c(ttest1$p.value, ttest2$p.value, ttest3$p.value),
+                    scientific = TRUE, digits = 2),
+  Balance = ifelse(abs(c(smd1, smd2, smd3)) < 0.1, "Good",
+                   ifelse(abs(c(smd1, smd2, smd3)) < 0.25, "OK", "Poor"))
+)
+kable(balance_observed, col.names = c("Variable", "Mean (AI User)", "Mean (Non-User)", "SMD", "t-test p", "Balance?"))
+```
+
+**Note:** t-test p-values show if groups are statistically different (p \< 0.05 = significant)
+
+**Legend:** \|SMD\| \> 0.25 = severe imbalance, \|SMD\| \> 0.1 = moderate
+
+**Interpretation:** AI users have MORE work experience, HIGHER quant skills, and MORE STEM background. These differences create CONFOUNDING.
+
+## 1.7 Visualize Imbalance (Observed)
+
+```{r plot-observed-imbalance, fig.height=4}
+plotData <- data.frame(
+  value = c(prior_exp, quant_skills, stem_background),
+  variable = rep(c("prior_exp", "quant_skills", "stem_background"), each = n),
+  group = factor(rep(ai_user, 3), labels = c("Non-user", "AI User"))
+)
+
+ggplot(plotData, aes(x = group, y = value, fill = group)) +
+  geom_boxplot(alpha = 0.7) +
+  facet_wrap(~ variable, scales = "free_y") +
+  scale_fill_manual(values = c("Non-user" = "steelblue", "AI User" = "coral")) +
+  labs(title = "Covariate Imbalance Before Matching (OBSERVED)",
+       subtitle = "AI users differ systematically from non-users (confounding!)",
+       x = "Group", y = "Value") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+## 1.8 Imbalance in UNOBSERVED Confounders
+
+Since this is simulated data, we can peek at what we "couldn't see" in real life:
+
+```{r unobserved-imbalance}
+smd_cur <- calcSMD(curiosity, ai_user)
+smd_tech <- calcSMD(tech_readiness, ai_user)
+smd_aver <- calcSMD(ai_aversion, ai_user)
+```
+
+```{r unobserved-balance-table}
+# Perform t-tests for unobserved confounders
+ttest_cur <- t.test(curiosity[ai_user == 1], curiosity[ai_user == 0])
+ttest_tech <- t.test(tech_readiness[ai_user == 1], tech_readiness[ai_user == 0])
+ttest_aver <- t.test(ai_aversion[ai_user == 1], ai_aversion[ai_user == 0])
+
+balance_unobserved <- data.frame(
+  Variable = c("curiosity", "tech_readiness", "ai_aversion"),
+  Mean_AI_User = round(c(mean(curiosity[ai_user == 1]),
+                         mean(tech_readiness[ai_user == 1]),
+                         mean(ai_aversion[ai_user == 1])), 2),
+  Mean_Non_User = round(c(mean(curiosity[ai_user == 0]),
+                          mean(tech_readiness[ai_user == 0]),
+                          mean(ai_aversion[ai_user == 0])), 2),
+  SMD = round(c(smd_cur, smd_tech, smd_aver), 3),
+  t_test_p = format(c(ttest_cur$p.value, ttest_tech$p.value, ttest_aver$p.value),
+                    scientific = TRUE, digits = 2),
+  Balance = ifelse(abs(c(smd_cur, smd_tech, smd_aver)) < 0.1, "Good",
+                   ifelse(abs(c(smd_cur, smd_tech, smd_aver)) < 0.25, "OK", "Poor"))
+)
+kable(balance_unobserved, col.names = c("Variable", "Mean (AI User)", "Mean (Non-User)", "SMD", "t-test p", "Balance?"))
+```
+
+**Note:** ai_aversion has NEGATIVE SMD because AI-averse students AVOID using AI!
+
+```{r plot-unobserved-imbalance, fig.height=4}
+plotDataUnobs <- data.frame(
+  value = c(curiosity, tech_readiness, ai_aversion),
+  variable = rep(c("curiosity", "tech_readiness", "ai_aversion"), each = n),
+  group = factor(rep(ai_user, 3), labels = c("Non-user", "AI User"))
+)
+
+ggplot(plotDataUnobs, aes(x = group, y = value, fill = group)) +
+  geom_boxplot(alpha = 0.7) +
+  facet_wrap(~ variable, scales = "free_y") +
+  scale_fill_manual(values = c("Non-user" = "steelblue", "AI User" = "coral")) +
+  labs(title = "UNOBSERVED Confounder Imbalance (We Can't Control for These!)",
+       subtitle = "In real life, we wouldn't know about this imbalance",
+       x = "Group", y = "Value") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+> **KEY INSIGHT:** Even if we match perfectly on observed confounders, these unobserved differences will still cause bias!
+
+## 1.9 Distribution Overlap Plots
+
+Density plots show HOW MUCH the distributions overlap. Less overlap = more imbalance = more confounding potential.
+
+### Observed Confounders
+
+```{r density-observed, fig.height=4}
+ggplot(df, aes(x = stem_background, fill = factor(ai_user, labels = c("Non-User", "AI User")))) +
+  geom_density(alpha = 0.5) +
+  scale_fill_manual(values = c("Non-User" = "steelblue", "AI User" = "coral")) +
+  labs(title = "STEM Background: Distribution by Group",
+       subtitle = paste0("SMD = ", round(smd3, 2), " - Clear separation between groups"),
+       x = "STEM Affinity Score", y = "Density", fill = "Group") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+------------------------------------------------------------------------
+
+# Part 2: Logistic Regression Tutorial
+
+## 2.1 Why Linear Regression Fails for Binary Outcomes
+
+If we use linear regression to predict AI adoption (a 0/1 outcome), predictions can go below 0 or above 1. This doesn't make sense for probabilities!
+
+```{r linear-fails, fig.height=4}
+linearModel <- lm(ai_user ~ stem_background, data = df)
+
+predData <- data.frame(stem_background = seq(min(stem_background) - 1, max(stem_background) + 1, length.out = 200))
+predData$linearPred <- predict(linearModel, newdata = predData)
+
+ggplot() +
+  geom_point(data = df, aes(x = stem_background, y = ai_user),
+             alpha = 0.3, color = "gray40") +
+  geom_line(data = predData, aes(x = stem_background, y = linearPred),
+            color = "red", linewidth = 1.2) +
+  geom_hline(yintercept = c(0, 1), linetype = "dashed", color = "blue") +
+  labs(title = "Problem: Linear Regression Predicts Outside [0, 1]",
+       subtitle = "We need probabilities, not unbounded predictions",
+       x = "STEM Background", y = "P(AI User)") +
+  theme_minimal() +
+  ylim(-0.3, 1.3)
+```
+
+Linear regression can predict values \< 0 or \> 1. This doesn't make sense for probabilities!
+
+## 2.2 The Sigmoid Function
+
+The sigmoid function maps any number to the range (0, 1):
+
+$$\text{sigmoid}(z) = \frac{1}{1 + e^{-z}}$$
+
+```{r sigmoid-function}
+sigmoid <- function(z) {
+  1 / (1 + exp(-z))
+}
+```
+
+**Key properties:**
+
+-   Output always between 0 and 1
+-   sigmoid(0) = 0.5
+-   As z → +∞, sigmoid(z) → 1
+-   As z → -∞, sigmoid(z) → 0
+
+```{r plot-sigmoid, fig.height=4}
+zValues <- seq(-6, 6, length.out = 200)
+sigmoidData <- data.frame(z = zValues, probability = sigmoid(zValues))
+
+ggplot(sigmoidData, aes(x = z, y = probability)) +
+  geom_line(color = "darkgreen", linewidth = 1.2) +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "red", alpha = 0.7) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red", alpha = 0.7) +
+  labs(title = "The Sigmoid (Logistic) Function",
+       subtitle = "Maps any real number to probability between 0 and 1",
+       x = "z (linear combination)", y = "Probability") +
+  theme_minimal()
+```
+
+## 2.3 How the Intercept Affects the Curve
+
+The intercept shifts the curve LEFT or RIGHT:
+
+-   Larger β₀ → curve shifts LEFT (higher probabilities for same x)
+-   Smaller β₀ → curve shifts RIGHT (lower probabilities for same x)
+
+```{r intercept-effect, fig.height=4}
+interceptData <- data.frame(
+  z = rep(zValues, 3),
+  probability = c(sigmoid(zValues - 2), sigmoid(zValues), sigmoid(zValues + 2)),
+  intercept = factor(rep(c("β₀ = -2 (shifted right)", "β₀ = 0 (baseline)", "β₀ = +2 (shifted left)"), each = 200),
+                     levels = c("β₀ = -2 (shifted right)", "β₀ = 0 (baseline)", "β₀ = +2 (shifted left)"))
+)
+
+ggplot(interceptData, aes(x = z, y = probability, color = intercept)) +
+  geom_line(linewidth = 1.2) +
+  geom_hline(yintercept = 0.5, linetype = "dashed", alpha = 0.5) +
+  scale_color_manual(values = c("coral", "gray40", "steelblue")) +
+  labs(title = "How Intercept Shifts the Sigmoid Curve",
+       subtitle = "Larger intercept = higher probability at any given x value",
+       x = "x (predictor)", y = "Probability",
+       color = "Intercept") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+## 2.4 How the Slope Affects the Curve
+
+The slope changes how STEEP the curve is:
+
+-   Larger \|β₁\| → steeper curve (sharper transition)
+-   Smaller \|β₁\| → flatter curve (more gradual transition)
+
+```{r slope-effect, fig.height=4}
+slopeData <- data.frame(
+  z = rep(zValues, 3),
+  probability = c(sigmoid(0.5 * zValues), sigmoid(zValues), sigmoid(2 * zValues)),
+  slope = factor(rep(c("β₁ = 0.5 (gradual)", "β₁ = 1.0 (baseline)", "β₁ = 2.0 (steep)"), each = 200),
+                 levels = c("β₁ = 0.5 (gradual)", "β₁ = 1.0 (baseline)", "β₁ = 2.0 (steep)"))
+)
+
+ggplot(slopeData, aes(x = z, y = probability, color = slope)) +
+  geom_line(linewidth = 1.2) +
+  geom_hline(yintercept = 0.5, linetype = "dashed", alpha = 0.5) +
+  geom_vline(xintercept = 0, linetype = "dashed", alpha = 0.5) +
+  scale_color_manual(values = c("coral", "gray40", "steelblue")) +
+  labs(title = "How Slope Changes the Steepness",
+       subtitle = "Larger slope = sharper transition from 0 to 1",
+       x = "x (predictor)", y = "Probability",
+       color = "Slope") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+## 2.5 Logistic vs Linear Regression Comparison
+
+Logistic regression finds the best sigmoid curve to predict binary outcomes:
+
+```{r logit-vs-linear, fig.height=4}
+logitModel <- glm(ai_user ~ stem_background, data = df, family = binomial)
+
+predDataLogit <- data.frame(stem_background = seq(min(stem_background) - 1, max(stem_background) + 1, length.out = 200))
+predDataLogit$logitPred <- predict(logitModel, newdata = predDataLogit, type = "response")
+predDataLogit$linearPred <- predict(linearModel, newdata = predDataLogit)
+
+ggplot() +
+  geom_point(data = df, aes(x = stem_background, y = ai_user),
+             alpha = 0.2, color = "gray40") +
+  geom_line(data = predDataLogit, aes(x = stem_background, y = linearPred, color = "Linear"),
+            linewidth = 1.2, linetype = "dashed") +
+  geom_line(data = predDataLogit, aes(x = stem_background, y = logitPred, color = "Logistic"),
+            linewidth = 1.2) +
+  geom_hline(yintercept = c(0, 1), linetype = "dotted", color = "gray50") +
+  scale_color_manual(values = c("Linear" = "coral", "Logistic" = "darkgreen"),
+                     name = "Model") +
+  labs(title = "Logistic vs Linear Regression for Binary Outcomes",
+       subtitle = "Logistic (green) shows S-curve, linear (red dashed) goes outside [0,1]",
+       x = "STEM Background", y = "P(AI User)") +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  ylim(-0.2, 1.2)
+```
+
+The logistic curve (green) fits the binary data properly! It gives us valid probabilities between 0 and 1.
+
+------------------------------------------------------------------------
+
+# Part 3: Manual Propensity Score Calculation
+
+## 3.1 Fit Logistic Regression Model
+
+We model P(AI user) using **OBSERVED confounders only**:
+
+$$P(\textrm{AI user} = 1) = \textrm{sigmoid}(\beta_0 + \beta_1 \cdot X_1 + \beta_2 \cdot X_2 + \beta_3 \cdot X_3)$$
+
+Where $X_1$ = prior experience, $X_2$ = quant skills, $X_3$ = STEM background.
+
+We CANNOT include curiosity, tech_readiness, or ai_aversion because in real life, we wouldn't be able to measure them!
+
+```{r fit-ps-model}
+psModel <- glm(ai_user ~ prior_exp + quant_skills + stem_background,
+               data = df, family = binomial)
+
+summary(psModel)
+```
+
+## 3.2 Extract Coefficients
+
+```{r extract-coefs}
+beta0 <- coef(psModel)["(Intercept)"]
+beta1 <- coef(psModel)["prior_exp"]
+beta2 <- coef(psModel)["quant_skills"]
+beta3 <- coef(psModel)["stem_background"]
+```
+
+```{r coef-table}
+coef_table <- data.frame(
+  Coefficient = c("B0 (Intercept)", "B1 (prior_exp)", "B2 (quant_skills)", "B3 (stem_background)"),
+  Value = round(c(beta0, beta1, beta2, beta3), 4)
+)
+kable(coef_table)
+```
+
+## 3.3 Manual Propensity Score Calculation
+
+Now let's calculate propensity scores manually using a for loop:
+
+```{r manual-pscore}
+pscore <- numeric(n)
+
+for (i in 1:n) {
+  z <- beta0 + beta1 * df$prior_exp[i] + beta2 * df$quant_skills[i] + beta3 * df$stem_background[i]
+  pscore[i] <- sigmoid(z)
+
+  # Print first 3 for demonstration
+  if (i <= 3) {
+    cat("Student", i, ":\n")
+    cat("  prior_exp =", round(df$prior_exp[i], 2),
+        ", quant_skills =", round(df$quant_skills[i], 2),
+        ", stem_background =", round(df$stem_background[i], 2), "\n")
+    cat("  z =", round(z, 3), "\n")
+    cat("  P(AI user) = sigmoid(", round(z, 3), ") =", round(pscore[i], 4), "\n\n")
+  }
+}
+
+df$pscore <- pscore
+```
+
+## 3.4 Verify Our Calculation
+
+Let's make sure our manual calculation matches R's built-in prediction:
+
+```{r verify-pscore}
+builtinPscore <- predict(psModel, type = "response")
+maxDiff <- max(abs(pscore - builtinPscore))
+```
+
+Maximum difference between manual and built-in: `r format(maxDiff, scientific = TRUE)`
+
+✓ Our manual calculation matches!
+
+## 3.5 Propensity Score Distributions
+
+```{r pscore-distributions, fig.height=5}
+df$group <- factor(df$ai_user, labels = c("Non-User", "AI User"))
+
+ggplot(df, aes(x = pscore, fill = group)) +
+  geom_density(alpha = 0.5) +
+  scale_fill_manual(values = c("Non-User" = "steelblue", "AI User" = "coral")) +
+  labs(title = "Propensity Score Distributions",
+       subtitle = "Overlap region is where matching is possible (common support)",
+       x = "Propensity Score (Probability of AI Use)", y = "Density",
+       fill = "Group") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+-   **Non-users:** scores concentrated at lower values (mean ≈ `r round(mean(df$pscore[df$ai_user == 0]), 2)`)
+-   **AI users:** scores concentrated at higher values (mean ≈ `r round(mean(df$pscore[df$ai_user == 1]), 2)`)
+
+The **overlap** between distributions is the **common support** - the region where matching is possible.
+
+------------------------------------------------------------------------
+
+# Part 4: Manual Nearest-Neighbor Matching
+
+## 4.1 Setup for Matching
+
+```{r matching-setup}
+df$matched <- 0
+df$matchGroup <- NA
+
+treatedIdx <- which(df$ai_user == 1)
+controlIdx <- which(df$ai_user == 0)
+
+nTreated <- length(treatedIdx)
+nControl <- length(controlIdx)
+
+# Caliper = 0.2 * SD of propensity scores
+caliper <- 0.2 * sd(df$pscore)
+```
+
+-   **Treated units:** `r nTreated`
+-   **Control units:** `r nControl`
+-   **Caliper:** `r round(caliper, 4)` (0.2 × SD of propensity scores)
+
+## 4.2 The Matching Algorithm
+
+For each treated unit, find the nearest unmatched control within the caliper:
+
+```{r matching-algorithm}
+pairID <- 0
+droppedDueToCaliper <- 0
+
+for (i in 1:nTreated) {
+  tIdx <- treatedIdx[i]
+  tPscore <- df$pscore[tIdx]
+
+  # Find unmatched controls
+  availableControls <- which(df$ai_user == 0 & df$matched == 0)
+
+  if (length(availableControls) == 0) {
+    droppedDueToCaliper <- droppedDueToCaliper + 1
+    next
+  }
+
+  # Find nearest neighbor
+  bestControlIdx <- NA
+  bestDistance <- Inf
+
+  for (cIdx in availableControls) {
+    distance <- abs(tPscore - df$pscore[cIdx])
+    if (distance < bestDistance) {
+      bestDistance <- distance
+      bestControlIdx <- cIdx
+    }
+  }
+
+  # Check caliper
+  if (bestDistance > caliper) {
+    droppedDueToCaliper <- droppedDueToCaliper + 1
+    next
+  }
+
+  # Create match
+  pairID <- pairID + 1
+  df$matched[tIdx] <- 1
+  df$matched[bestControlIdx] <- 1
+  df$matchGroup[tIdx] <- pairID
+  df$matchGroup[bestControlIdx] <- pairID
+}
+```
+
+## 4.3 Matching Results
+
+```{r matching-results}
+dfMatched <- df[df$matched == 1, ]
+
+nMatchedTreated <- sum(dfMatched$ai_user == 1)
+nMatchedControl <- sum(dfMatched$ai_user == 0)
+nDroppedTreated <- sum(df$ai_user == 1) - nMatchedTreated
+```
+
+```{r matching-summary-table}
+matching_summary <- data.frame(
+  Group = c("Total", "AI Users", "Non-Users"),
+  Before = c(n, sum(df$ai_user == 1), sum(df$ai_user == 0)),
+  After = c(nrow(dfMatched), nMatchedTreated, nMatchedControl)
+)
+kable(matching_summary)
+```
+
+**Dropped due to caliper:** `r nDroppedTreated` AI users (`r round(100 * nDroppedTreated / sum(df$ai_user == 1))`%)
+
+```{r sample-size-plot, fig.height=4}
+sampleSizeData <- data.frame(
+  dataset = factor(rep(c("Full Data", "Matched Data"), each = 2),
+                   levels = c("Full Data", "Matched Data")),
+  group = rep(c("AI Users", "Non-Users"), 2),
+  count = c(sum(df$ai_user == 1), sum(df$ai_user == 0),
+            nMatchedTreated, nMatchedControl)
+)
+
+ggplot(sampleSizeData, aes(x = dataset, y = count, fill = group)) +
+  geom_bar(stat = "identity", position = "dodge", alpha = 0.8) +
+  geom_text(aes(label = count), position = position_dodge(width = 0.9),
+            vjust = -0.5, size = 4) +
+  scale_fill_manual(values = c("AI Users" = "coral", "Non-Users" = "steelblue")) +
+  labs(title = "Sample Size: Full Data vs Matched Data",
+       subtitle = paste0("Matching reduces sample from ", n, " to ", nrow(dfMatched),
+                        " (", round(100 * nrow(dfMatched)/n), "% retained)"),
+       x = "", y = "Number of Students", fill = "Group") +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  ylim(0, max(sampleSizeData$count) * 1.15)
+```
+
+> **TRADE-OFF:** Matching improves balance but REDUCES sample size. The caliper drops treated units with no good matches.
+
+------------------------------------------------------------------------
+
+# Part 5: Balance Assessment
+
+## 5.1 SMD Before vs After
+
+```{r balance-smd}
+# Before
+smd1_before <- calcSMD(df$prior_exp, df$ai_user)
+smd2_before <- calcSMD(df$quant_skills, df$ai_user)
+smd3_before <- calcSMD(df$stem_background, df$ai_user)
+
+# After
+smd1_after <- calcSMD(dfMatched$prior_exp, dfMatched$ai_user)
+smd2_after <- calcSMD(dfMatched$quant_skills, dfMatched$ai_user)
+smd3_after <- calcSMD(dfMatched$stem_background, dfMatched$ai_user)
+```
+
+### OBSERVED Confounders
+
+```{r smd-observed-table}
+# T-tests BEFORE matching
+ttest1_before <- t.test(df$prior_exp[df$ai_user == 1], df$prior_exp[df$ai_user == 0])
+ttest2_before <- t.test(df$quant_skills[df$ai_user == 1], df$quant_skills[df$ai_user == 0])
+ttest3_before <- t.test(df$stem_background[df$ai_user == 1], df$stem_background[df$ai_user == 0])
+
+# T-tests AFTER matching
+ttest1_after <- t.test(dfMatched$prior_exp[dfMatched$ai_user == 1], dfMatched$prior_exp[dfMatched$ai_user == 0])
+ttest2_after <- t.test(dfMatched$quant_skills[dfMatched$ai_user == 1], dfMatched$quant_skills[dfMatched$ai_user == 0])
+ttest3_after <- t.test(dfMatched$stem_background[dfMatched$ai_user == 1], dfMatched$stem_background[dfMatched$ai_user == 0])
+
+smd_comparison_observed <- data.frame(
+  Variable = c("prior_exp", "quant_skills", "stem_background"),
+  SMD_Before = round(c(smd1_before, smd2_before, smd3_before), 3),
+  p_Before = format(c(ttest1_before$p.value, ttest2_before$p.value, ttest3_before$p.value),
+                    scientific = TRUE, digits = 2),
+  SMD_After = round(c(smd1_after, smd2_after, smd3_after), 3),
+  p_After = format(c(ttest1_after$p.value, ttest2_after$p.value, ttest3_after$p.value),
+                   scientific = TRUE, digits = 2),
+  Balanced = ifelse(abs(c(smd1_after, smd2_after, smd3_after)) < 0.1, "Yes", "No")
+)
+kable(smd_comparison_observed, col.names = c("Variable", "SMD Before", "p Before", "SMD After", "p After", "Balanced?"))
+```
+
+**Note:** p \< 0.05 means groups are significantly different. After matching, we want p \> 0.05!
+
+## 5.2 What About UNOBSERVED Confounders?
+
+Since we simulated this data, we can peek behind the curtain...
+
+```{r unobserved-balance}
+smd_cur_before <- calcSMD(df$curiosity, df$ai_user)
+smd_tech_before <- calcSMD(df$tech_readiness, df$ai_user)
+smd_aver_before <- calcSMD(df$ai_aversion, df$ai_user)
+
+smd_cur_after <- calcSMD(dfMatched$curiosity, dfMatched$ai_user)
+smd_tech_after <- calcSMD(dfMatched$tech_readiness, dfMatched$ai_user)
+smd_aver_after <- calcSMD(dfMatched$ai_aversion, dfMatched$ai_user)
+```
+
+### UNOBSERVED Confounders (we can't control for these!)
+
+```{r smd-unobserved-table}
+# T-tests BEFORE matching (unobserved)
+ttest_cur_before <- t.test(df$curiosity[df$ai_user == 1], df$curiosity[df$ai_user == 0])
+ttest_tech_before <- t.test(df$tech_readiness[df$ai_user == 1], df$tech_readiness[df$ai_user == 0])
+ttest_aver_before <- t.test(df$ai_aversion[df$ai_user == 1], df$ai_aversion[df$ai_user == 0])
+
+# T-tests AFTER matching (unobserved)
+ttest_cur_after <- t.test(dfMatched$curiosity[dfMatched$ai_user == 1], dfMatched$curiosity[dfMatched$ai_user == 0])
+ttest_tech_after <- t.test(dfMatched$tech_readiness[dfMatched$ai_user == 1], dfMatched$tech_readiness[dfMatched$ai_user == 0])
+ttest_aver_after <- t.test(dfMatched$ai_aversion[dfMatched$ai_user == 1], dfMatched$ai_aversion[dfMatched$ai_user == 0])
+
+smd_comparison_unobserved <- data.frame(
+  Variable = c("curiosity", "tech_readiness", "ai_aversion"),
+  SMD_Before = round(c(smd_cur_before, smd_tech_before, smd_aver_before), 3),
+  p_Before = format(c(ttest_cur_before$p.value, ttest_tech_before$p.value, ttest_aver_before$p.value),
+                    scientific = TRUE, digits = 2),
+  SMD_After = round(c(smd_cur_after, smd_tech_after, smd_aver_after), 3),
+  p_After = format(c(ttest_cur_after$p.value, ttest_tech_after$p.value, ttest_aver_after$p.value),
+                   scientific = TRUE, digits = 2),
+  Balanced = ifelse(abs(c(smd_cur_after, smd_tech_after, smd_aver_after)) < 0.1, "Yes", "No")
+)
+kable(smd_comparison_unobserved, col.names = c("Variable", "SMD Before", "p Before", "SMD After", "p After", "Balanced?"))
+```
+
+> **KEY INSIGHT:** Matching on observed confounders does NOT balance unobserved ones! This is why we'll still have bias in our estimates.
+
+## 5.3 Love Plot
+
+```{r love-plot, fig.height=5}
+lovePlotData <- data.frame(
+  variable = rep(c("prior_exp", "quant_skills", "stem_background",
+                   "curiosity*", "tech_readiness*", "ai_aversion*"), 2),
+  SMD = c(smd1_before, smd2_before, smd3_before, smd_cur_before, smd_tech_before, smd_aver_before,
+          smd1_after, smd2_after, smd3_after, smd_cur_after, smd_tech_after, smd_aver_after),
+  period = factor(rep(c("Before", "After"), each = 6), levels = c("Before", "After")),
+  type = rep(c(rep("Observed", 3), rep("Unobserved", 3)), 2)
+)
+
+ggplot(lovePlotData, aes(x = abs(SMD), y = variable, color = period, shape = type)) +
+  geom_point(size = 4) +
+  geom_vline(xintercept = 0.1, linetype = "dashed", color = "green4") +
+  geom_vline(xintercept = 0.25, linetype = "dashed", color = "orange") +
+  scale_color_manual(values = c("Before" = "coral", "After" = "steelblue")) +
+  labs(title = "Love Plot: Balance Before vs After Matching",
+       subtitle = "* = Unobserved (cannot be matched on). Matching helps observed, not unobserved.",
+       x = "|SMD|", y = "") +
+  theme_minimal()
+```
+
+## 5.4 Density Overlap: Before vs After
+
+```{r density-before-after, fig.height=4}
+# STEM background - before
+ggplot(df, aes(x = stem_background, fill = factor(ai_user, labels = c("Non-User", "AI User")))) +
+  geom_density(alpha = 0.5) +
+  scale_fill_manual(values = c("Non-User" = "steelblue", "AI User" = "coral")) +
+  labs(title = "STEM Background: BEFORE Matching",
+       subtitle = paste0("SMD = ", round(smd3_before, 2), " (poor balance)"),
+       x = "STEM Affinity Score", y = "Density", fill = "Group") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+# STEM background - after
+ggplot(dfMatched, aes(x = stem_background, fill = factor(ai_user, labels = c("Non-User", "AI User")))) +
+  geom_density(alpha = 0.5) +
+  scale_fill_manual(values = c("Non-User" = "steelblue", "AI User" = "coral")) +
+  labs(title = "STEM Background: AFTER Matching",
+       subtitle = paste0("SMD = ", round(smd3_after, 2), " (good balance!)"),
+       x = "STEM Affinity Score", y = "Density", fill = "Group") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+------------------------------------------------------------------------
+
+# Part 6: Treatment Effect Estimation
+
+## 6.1 Method 1: Naive Comparison (No Adjustment)
+
+```{r naive-estimate}
+naiveModel <- lm(salary ~ ai_user, data = df)
+naiveEst <- coef(naiveModel)["ai_user"]
+```
+
+**Model:** `salary ~ ai_user` (full sample, n = `r nrow(df)`)
+
+-   Estimate: \$`r format(round(naiveEst * 1000), big.mark = ",")`
+-   True effect: \$`r format(trueEffect * 1000, big.mark = ",")`
+-   Bias: \$`r format(round((naiveEst - trueEffect) * 1000), big.mark = ",")`
+
+## 6.2 Method 2: Full Data + Covariates (Linear)
+
+```{r reg-covariates}
+regLinearModel <- lm(salary ~ ai_user + prior_exp + quant_skills + stem_background, data = df)
+regLinearEst <- coef(regLinearModel)["ai_user"]
+```
+
+**Model:** `salary ~ ai_user + covariates` (full sample, LINEAR terms only)
+
+-   Estimate: \$`r format(round(regLinearEst * 1000), big.mark = ",")`
+-   True effect: \$`r format(trueEffect * 1000, big.mark = ",")`
+-   Bias: \$`r format(round((regLinearEst - trueEffect) * 1000), big.mark = ",")`
+
+> **Problem:** The TRUE outcome model has non-linear terms (prior_exp\^2) and interactions (quant_skills x stem_background) that we didn't include!
+
+## 6.3 Method 3: Matching Only
+
+```{r matched-estimate}
+matchedModel <- lm(salary ~ ai_user, data = dfMatched)
+matchedEst <- coef(matchedModel)["ai_user"]
+```
+
+**Model:** `salary ~ ai_user` (matched sample, n = `r nrow(dfMatched)`)
+
+-   Estimate: \$`r format(round(matchedEst * 1000), big.mark = ",")`
+-   True effect: \$`r format(trueEffect * 1000, big.mark = ",")`
+-   Bias: \$`r format(round((matchedEst - trueEffect) * 1000), big.mark = ",")`
+
+Matching doesn't assume linearity - it just compares similar people!
+
+## 6.4 Method 4: Matching + Covariates (Doubly Robust)
+
+```{r matched-cov-estimate}
+matchedCovModel <- lm(salary ~ ai_user + prior_exp + quant_skills + stem_background, data = dfMatched)
+matchedCovEst <- coef(matchedCovModel)["ai_user"]
+```
+
+**Model:** `salary ~ ai_user + covariates` (matched sample)
+
+-   Estimate: \$`r format(round(matchedCovEst * 1000), big.mark = ",")`
+-   True effect: \$`r format(trueEffect * 1000, big.mark = ",")`
+-   Bias: \$`r format(round((matchedCovEst - trueEffect) * 1000), big.mark = ",")`
+
+## 6.5 Comparison of All Methods
+
+```{r comparison-table}
+naiveBias <- naiveEst - 2
+regLinBias <- regLinearEst - 2
+matchBias <- matchedEst - 2
+matchCovBias <- matchedCovEst - 2
+
+regLinReduc <- (1 - abs(regLinBias) / abs(naiveBias)) * 100
+matchReduc <- (1 - abs(matchBias) / abs(naiveBias)) * 100
+matchCovReduc <- (1 - abs(matchCovBias) / abs(naiveBias)) * 100
+```
+
+```{r methods-comparison-table}
+methods_comparison <- data.frame(
+  Method = c("True Effect", "1. Naive (no cov)", "2. Full + Cov",
+             "3. Matching only", "4. Matching + Cov"),
+  Estimate = paste0("$", format(round(c(2, naiveEst, regLinearEst, matchedEst, matchedCovEst) * 1000), big.mark = ",")),
+  Bias = paste0("$", format(round(c(0, naiveBias, regLinBias, matchBias, matchCovBias) * 1000), big.mark = ",")),
+  Bias_Reduction = c("-", "-", paste0(round(regLinReduc, 1), "%"),
+                     paste0(round(matchReduc, 1), "%"), paste0(round(matchCovReduc, 1), "%"))
+)
+kable(methods_comparison, col.names = c("Method", "Estimate", "Bias", "Bias Reduction"))
+```
+
+```{r comparison-plot, fig.height=5}
+resultsData <- data.frame(
+  method = factor(c("True Effect", "Naive (no cov)", "Full + Cov", "Matched", "Matched + Cov"),
+                  levels = c("True Effect", "Naive (no cov)", "Full + Cov", "Matched", "Matched + Cov")),
+  estimate = c(2, naiveEst, regLinearEst, matchedEst, matchedCovEst)
+)
+
+ggplot(resultsData, aes(x = method, y = estimate, fill = method)) +
+  geom_bar(stat = "identity", alpha = 0.7) +
+  geom_hline(yintercept = 2, linetype = "dashed", color = "red", linewidth = 1) +
+  scale_fill_manual(values = c("True Effect" = "green4", "Naive (no cov)" = "gray50",
+                                "Full + Cov" = "orange", "Matched" = "steelblue",
+                                "Matched + Cov" = "purple")) +
+  labs(title = "Treatment Effect Estimates by Method",
+       subtitle = "Red dashed line = true effect ($2,000). Combining methods works best!",
+       x = "", y = "Estimated Effect ($1,000s)") +
+  theme_minimal() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 15, hjust = 1))
+```
+
+## 6.6 Statistical Significance Analysis
+
+Let's examine whether the true effect falls within our 95% confidence intervals:
+
+```{r statistical-significance}
+# Extract CIs
+naive_ci <- confint(naiveModel, "ai_user", level = 0.95)
+regLin_ci <- confint(regLinearModel, "ai_user", level = 0.95)
+matched_ci <- confint(matchedModel, "ai_user", level = 0.95)
+matchedCov_ci <- confint(matchedCovModel, "ai_user", level = 0.95)
+
+# Extract p-values
+naive_pval <- summary(naiveModel)$coefficients["ai_user", "Pr(>|t|)"]
+regLin_pval <- summary(regLinearModel)$coefficients["ai_user", "Pr(>|t|)"]
+matched_pval <- summary(matchedModel)$coefficients["ai_user", "Pr(>|t|)"]
+matchedCov_pval <- summary(matchedCovModel)$coefficients["ai_user", "Pr(>|t|)"]
+```
+
+```{r stat-sig-table}
+stat_sig_table <- data.frame(
+  Method = c("1. Naive", "2. Full + Cov", "3. Matched", "4. Matched + Cov"),
+  Estimate = round(c(naiveEst, regLinearEst, matchedEst, matchedCovEst), 2),
+  p_value = format(c(naive_pval, regLin_pval, matched_pval, matchedCov_pval),
+                   scientific = TRUE, digits = 2),
+  CI_95 = paste0("[", round(c(naive_ci[1], regLin_ci[1], matched_ci[1], matchedCov_ci[1]), 2),
+                 ", ", round(c(naive_ci[2], regLin_ci[2], matched_ci[2], matchedCov_ci[2]), 2), "]"),
+  True_in_CI = ifelse(c(naive_ci[1] <= 2 & naive_ci[2] >= 2,
+                        regLin_ci[1] <= 2 & regLin_ci[2] >= 2,
+                        matched_ci[1] <= 2 & matched_ci[2] >= 2,
+                        matchedCov_ci[1] <= 2 & matchedCov_ci[2] >= 2), "Yes", "NO")
+)
+kable(stat_sig_table, col.names = c("Method", "Estimate", "p-value", "95% CI", "True in CI?"))
+```
+
+```{r ci-plot, fig.height=5}
+ciData <- data.frame(
+  method = factor(c("Naive (no cov)", "Full + Cov", "Matched", "Matched + Cov"),
+                  levels = c("Naive (no cov)", "Full + Cov", "Matched", "Matched + Cov")),
+  estimate = c(naiveEst, regLinearEst, matchedEst, matchedCovEst),
+  ci_low = c(naive_ci[1], regLin_ci[1], matched_ci[1], matchedCov_ci[1]),
+  ci_high = c(naive_ci[2], regLin_ci[2], matched_ci[2], matchedCov_ci[2])
+)
+
+ggplot(ciData, aes(x = method, y = estimate, color = method)) +
+  geom_point(size = 4) +
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0.2, linewidth = 1) +
+  geom_hline(yintercept = 2, linetype = "dashed", color = "red", linewidth = 1) +
+  geom_hline(yintercept = 0, linetype = "dotted", color = "gray50") +
+  scale_color_manual(values = c("Naive (no cov)" = "gray50", "Full + Cov" = "orange",
+                                 "Matched" = "steelblue", "Matched + Cov" = "purple")) +
+  labs(title = "Treatment Effect Estimates with 95% Confidence Intervals",
+       subtitle = "Red dashed line = true effect ($2,000). Does it fall within CI?",
+       x = "", y = "Estimated Effect ($1,000s)") +
+  theme_minimal() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 15, hjust = 1))
+```
+
+### Key Interpretation
+
+1.  **ALL methods find a statistically significant effect** (p \< 0.05). We'd reject H₀: effect = 0 in all cases.
+
+2.  **BUT:** The true effect (\$2,000) may NOT fall within the 95% CI! This shows that **statistical significance ≠ unbiased estimation**.
+
+3.  **Due to CONFOUNDING BIAS:**
+
+    -   Our estimates are BIASED (too high)
+    -   The confidence intervals are centered around the WRONG value
+    -   Even with tight standard errors, we're precisely WRONG
+
+4.  **KEY LESSON:** Statistical significance tells us the effect is unlikely to be ZERO. It does NOT tell us our estimate is CORRECT or unbiased. Unobserved confounding creates bias that p-values cannot detect!
+
+------------------------------------------------------------------------
+
+# Key Insights
+
+## Comparing the Methods
+
+The true salary model includes **NON-LINEAR** terms:
+
+-   prior_exp\^2 (quadratic effect of experience)
+-   quant_skills x stem_background (interaction)
+
+**Linear regression (Method 2)** assumes:
+
+`salary = B0 + B1*ai_user + B2*prior_exp + B3*quant_skills + B4*stem_background`
+
+This is **MISSPECIFIED** - it misses the non-linear effects!
+
+**Matching (Method 3)** makes NO functional form assumptions. It simply compares AI users to similar non-users. Doesn't require specifying the correct outcome model.
+
+**Matching + Covariates (Method 4)** - DOUBLY ROBUST: Combines the benefits of both approaches. Lowest bias because it adjusts for residual imbalance.
+
+**REMAINING BIAS** comes from UNOBSERVED confounders: curiosity, tech_readiness, ai_aversion. Neither matching nor regression can fix this!
+
+## Bottom Line
+
+-   **Matching + regression gives best results** (doubly robust)
+-   Both methods alone achieve similar bias reduction
+-   Matching is more **ROBUST** (doesn't assume functional form)
+-   But **BOTH methods fail with unobserved confounding**
+-   Only **RANDOMIZATION** can balance unobserved confounders
+
+------------------------------------------------------------------------
+
+# Summary
+
+## What We Learned
+
+1.  **Propensity scores** predict treatment probability from observed variables
+
+2.  **Logistic regression** is used because outcomes are binary (0/1) and we need probabilities between 0 and 1
+
+3.  **Combining matching + regression** (doubly robust) gives best results
+
+4.  **Balance on observed confounders** improves after matching (SMD → 0)
+
+5.  **Unobserved confounders remain imbalanced** - causing residual bias
+
+6.  **Only randomization** can balance both observed AND unobserved confounders

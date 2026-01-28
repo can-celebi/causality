@@ -31,7 +31,7 @@ library(tidyverse)   # For data manipulation (dplyr, ggplot2, etc.)
 library(ggplot2)     # For visualization
 
 # Set seed for reproducibility
-set.seed(123)
+set.seed(456)
 
 
 # ==============================================================================
@@ -43,7 +43,7 @@ set.seed(123)
 # ------------------------------------------------------------------------------
 
 # Sample size
-n <- 900
+n <- 1000
 
 # ------------------------------------------------------------------------------
 # 1.1 Generate Confounders
@@ -58,7 +58,7 @@ n <- 900
 # ------------------------------------------------------------------------------
 
 w <- sample(c(0, 1), n, replace = TRUE)  # Unobserved - we pretend not to know this
-z <- rnorm(n = n, mean = 5)              # Observed - this we can use for matching
+z <- rnorm(n = n, mean = 10)              # Observed - this we can use for matching
 
 
 # -- SIDE QUEST ---
@@ -80,13 +80,13 @@ df <- data.frame(w = w, z = z)
 # from control units BEFORE treatment even happens.
 # ------------------------------------------------------------------------------
 
-Tstar <- 3 * w + z + rnorm(n = n)        # Latent var
-Treat <- ifelse(Tstar > 6.5, 1, 0)       # Treatment assignment (binary)
+x <- 30 * w + z + rnorm(n = n)        # Latent var
+t <- ifelse(x > 20, 1, 0)       # Treatment assignment (binary)
 
 # Check treatment proportions
 cat("Treatment proportions:\n")
-table(Treat)
-prop.table(table(Treat))
+table(t)
+prop.table(table(t))
 
 # ------------------------------------------------------------------------------
 # 1.3 Generate Outcome
@@ -102,20 +102,20 @@ prop.table(table(Treat))
 #   - Random noise
 # ------------------------------------------------------------------------------
 
-y <- 2 * Treat + 2 * w + z + rnorm(n = n)
+y <- 2 * t + 2 * w + z + rnorm(n = n)
 
 # ------------------------------------------------------------------------------
 # 1.4 Create Observational Dataset
 # ------------------------------------------------------------------------------
-# In real life, we would only observe: y, Treat, z
+# In real life, we would only observe: y, t, z
 # We would NOT observe w (but we keep it for checking our methods)
 # ------------------------------------------------------------------------------
 
 obsData <- data.frame(
-  y = y,
-  Treat = Treat,
-  z = z,
-  w = w  # We keep this for validation, but pretend we can't use it
+  y = y, # observed outcome
+  t = t, # binary treatment variable
+  z = z, # observed confound
+  w = w  # unobserved confound - We keep this for validation, but pretend we can't use it
 )
 
 # Quick look at the data
@@ -128,9 +128,9 @@ summary(obsData)
 # 1.4.a Treatment Assignment (Selection Check)
 # ------------------------------------------------------------------------------
 # If treatment were random, counts would be roughly balanced.
-# Here imbalance is expected because Treat depends on Tstar.
+# Here imbalance is expected because t depends on x
 
-ggplot(obsData, aes(x = factor(Treat))) +
+ggplot(obsData, aes(x = factor(t))) +
   geom_bar(fill = "darkgreen") +
   labs(
     title = "1.4.a Treatment Assignment (Observational Data)",
@@ -146,7 +146,7 @@ ggplot(obsData, aes(x = factor(Treat))) +
 # Differences here indicate selection on observables.
 # z influences treatment via the latent index Tstar.
 
-ggplot(obsData, aes(x = factor(Treat), y = z)) +
+ggplot(obsData, aes(x = factor(t), y = z)) +
   geom_boxplot(fill = "skyblue") +
   labs(
     title = "1.4.b Covariate z by Treatment Status",
@@ -179,7 +179,7 @@ ggplot(obsData, aes(x = z, fill = factor(Treat))) +
 #   - effect of z
 # Therefore it is NOT causal.
 
-ggplot(obsData, aes(x = factor(Treat), y = y)) +
+ggplot(obsData, aes(x = factor(t), y = y)) +
   geom_boxplot(fill = "orange") +
   labs(
     title = "1.4.d Outcome y by Treatment (Naïve Comparison)",

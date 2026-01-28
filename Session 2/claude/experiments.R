@@ -20,13 +20,16 @@ ssize <- 900
 # Generate confounding variables
 w <- sample(c(0, 1), ssize, replace = TRUE) # Unobserved confounding
 z <- rnorm(n = ssize, mean = 5)             # Observed confounding
+hist(z)
+
 
 # Generate Treatment (influenced by w and z)
-Tstar <- 3 * w + z + rnorm(n = ssize)
+Tstar <- 30 * w - z + rnorm(n = ssize)
+hist(Tstar)
 Treat_obs <- ifelse(Tstar > 6.5, 1, 0)
 
 # Generate Outcome (True effect of Treatment = 2)
-y_out_obs <- 2 * Treat_obs + 2 * w + z + rnorm(n = ssize)
+y_out_obs <- 2 * Treat_obs + 2 * w - z + rnorm(n = ssize)
 
 sim_obs_data <- data.frame(
   y_out = y_out_obs, 
@@ -38,10 +41,14 @@ sim_obs_data <- data.frame(
 # Regressions for Observational Data
 m1_obs <- lm(y_out ~ Treat_obs, data = sim_obs_data)
 m2_obs <- lm(y_out ~ Treat_obs + z, data = sim_obs_data)
-# m3_obs <- lm(y_out ~ Treat_obs + z + w, data = sim_obs_data)
+
+# In reality we do not have access to the unobserved variable w
+m3_obs <- lm(y_out ~ Treat_obs + z + w, data = sim_obs_data)
 
 summary(m1_obs)
 summary(m2_obs)
+summary(m3_obs)
+
 
 print("--- Observational Data Results ---")
 print(summary(m1_obs)$coefficients[2, ]) 
@@ -58,7 +65,11 @@ Treat_rand <- sample(c(0, 1), ssize, replace = TRUE)
 # Generate Outcome (True effect of Treatment = 2)
 y_out_exp <- 2 * Treat_rand + 2 * w + z + rnorm(n = ssize)
 
-sim_exp_data <- data.frame(y_out = y_out_exp, Treat_rand = Treat_rand, z = z, w = w)
+sim_exp_data <- data.frame(
+  y_out = y_out_exp, 
+  Treat_rand = Treat_rand, 
+  z = z, 
+  w = w)
 
 # Regressions for Experimental Data
 m1_exp <- lm(y_out ~ Treat_rand, data = sim_exp_data)

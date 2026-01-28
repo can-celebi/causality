@@ -2,8 +2,7 @@
 Operational/
 .claude/
 textbook/
-Session\ 2/Materials/
-Session\ 2/claude/oldMaterial.R
+
 
 # R project files
 *.Rproj
@@ -29,6 +28,18 @@ Session\ 1.5\ \(optional\ session\)/R/causal_graphs_concepts.md
 Session\ 1.5\ \(optional\ session\)/R/foundation.md
 Session\ 1.5\ \(optional\ session\)/R/session15.R
 Session\ 1.5\ \(optional\ session\)/R/practiceBeforeLiveSession.R
+
+# Session 2 - R-specific ignores
+Session\ 2/Materials/
+Session\ 2/claude/oldMaterial.R
+
+# Session 2.5
+Session\ 2.5/dev/
+Session\ 2.5/CLAUDE.md
+Session\ 2.5/prompt.md
+Session\ 2.5/Rplots.pdf
+Session\ 2.5/SESSION_2.5_OVERVIEW.md
+
 
 # General R files
 *.Rhistory

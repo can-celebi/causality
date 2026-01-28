@@ -545,7 +545,7 @@ ttest_large <- t.test(g2_large, g1_large)
 ```
 
 | Sample Size | SMD | P-value | Significant? |
-|----|----|----|----|
+|------------------|------------------|------------------|------------------|
 | n = 20 | `r round(smd_small, 3)` | `r round(ttest_small$p.value, 4)` | `r ifelse(ttest_small$p.value < 0.05, "YES", "NO")` |
 | n = 100 | `r round(smd_med, 3)` | `r round(ttest_med$p.value, 4)` | `r ifelse(ttest_med$p.value < 0.05, "YES", "NO")` |
 | n = 1000 | `r round(smd_large, 3)` | `r format(ttest_large$p.value, scientific = TRUE, digits = 2)` | `r ifelse(ttest_large$p.value < 0.05, "YES", "NO")` |

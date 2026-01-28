@@ -1,0 +1,1444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>R Fundamentals Quiz - Practice Questions</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .back-link {
+            display: inline-block;
+            color: white;
+            text-decoration: none;
+            margin-bottom: 20px;
+            padding: 10px 20px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 5px;
+            transition: background 0.3s;
+        }
+
+        .back-link:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .progress-bar {
+            background: rgba(255,255,255,0.3);
+            border-radius: 10px;
+            height: 10px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            background: #4CAF50;
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+
+        .question-counter {
+            color: white;
+            text-align: center;
+            margin-bottom: 15px;
+            font-size: 1.1rem;
+        }
+
+        .quiz-card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+
+        .category-badge {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            margin-bottom: 20px;
+        }
+
+        .question-text {
+            font-size: 1.1rem;
+            line-height: 1.6;
+            color: #333;
+            margin-bottom: 25px;
+        }
+
+        .question-text pre {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.95rem;
+            margin: 15px 0;
+            border-left: 4px solid #667eea;
+        }
+
+        .answer-section {
+            margin-top: 20px;
+        }
+
+        .show-answer-btn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            width: 100%;
+        }
+
+        .show-answer-btn:hover {
+            background: #45a049;
+            transform: translateY(-2px);
+        }
+
+        .answer-content {
+            display: none;
+            margin-top: 20px;
+            padding: 20px;
+            background: #e8f5e9;
+            border-radius: 10px;
+            border-left: 4px solid #4CAF50;
+        }
+
+        .answer-content.show {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .answer-label {
+            font-weight: bold;
+            color: #2e7d32;
+            margin-bottom: 10px;
+            font-size: 1rem;
+        }
+
+        .answer-text {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            background: white;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            white-space: pre-wrap;
+            font-size: 0.95rem;
+        }
+
+        .alternatives {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px dashed #a5d6a7;
+        }
+
+        .alternatives-label {
+            font-weight: bold;
+            color: #1565c0;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+        }
+
+        .alternative-item {
+            background: #e3f2fd;
+            padding: 8px 12px;
+            border-radius: 5px;
+            margin: 5px 0;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.9rem;
+        }
+
+        .explanation {
+            margin-top: 15px;
+            padding: 15px;
+            background: #fff3e0;
+            border-radius: 5px;
+            border-left: 4px solid #ff9800;
+        }
+
+        .explanation-label {
+            font-weight: bold;
+            color: #e65100;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+        }
+
+        .navigation {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 25px;
+            gap: 15px;
+        }
+
+        .nav-btn {
+            flex: 1;
+            padding: 15px 25px;
+            font-size: 1rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .nav-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .prev-btn {
+            background: #9e9e9e;
+            color: white;
+        }
+
+        .prev-btn:hover:not(:disabled) {
+            background: #757575;
+        }
+
+        .next-btn {
+            background: #667eea;
+            color: white;
+        }
+
+        .next-btn:hover:not(:disabled) {
+            background: #5a6fd6;
+        }
+
+        .random-btn {
+            background: #ff9800;
+            color: white;
+        }
+
+        .random-btn:hover {
+            background: #f57c00;
+        }
+
+        .jump-section {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 8px;
+        }
+
+        .jump-label {
+            font-size: 0.9rem;
+            color: #666;
+            margin-bottom: 10px;
+        }
+
+        .jump-input {
+            width: 80px;
+            padding: 8px 12px;
+            font-size: 1rem;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            margin-right: 10px;
+        }
+
+        .jump-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .category-filter {
+            margin-bottom: 20px;
+        }
+
+        .category-select {
+            width: 100%;
+            padding: 10px;
+            font-size: 1rem;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            background: white;
+        }
+
+        .footer {
+            text-align: center;
+            color: white;
+            margin-top: 30px;
+            opacity: 0.8;
+        }
+
+        .footer a {
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="../index.html" class="back-link">&larr; Back to Course Materials</a>
+
+        <div class="header">
+            <h1>R Fundamentals Quiz</h1>
+            <p>125 practice questions to test your R knowledge</p>
+        </div>
+
+        <div class="category-filter">
+            <select class="category-select" id="categorySelect" onchange="filterByCategory()">
+                <option value="all">All Categories</option>
+                <option value="1-15">Vectors - Creation and Indexing (1-15)</option>
+                <option value="16-30">Vector Operations and Arithmetic (16-30)</option>
+                <option value="31-45">Logical Operations (31-45)</option>
+                <option value="46-55">ifelse() and Conditionals (46-55)</option>
+                <option value="56-65">Data Types and Coercion (56-65)</option>
+                <option value="66-80">Data Frames (66-80)</option>
+                <option value="81-88">NA Handling (81-88)</option>
+                <option value="89-95">String Operations (89-95)</option>
+                <option value="96-105">Combined Concepts (96-105)</option>
+                <option value="106-115">For Loops (106-115)</option>
+                <option value="116-125">Error Fixing (116-125)</option>
+            </select>
+        </div>
+
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressFill"></div>
+        </div>
+
+        <div class="question-counter" id="questionCounter">Question 1 of 125</div>
+
+        <div class="quiz-card">
+            <div class="category-badge" id="categoryBadge">Vectors</div>
+
+            <div class="question-text" id="questionText"></div>
+
+            <div class="answer-section">
+                <button class="show-answer-btn" id="showAnswerBtn" onclick="toggleAnswer()">
+                    Show Answer
+                </button>
+
+                <div class="answer-content" id="answerContent">
+                    <div class="answer-label">Answer:</div>
+                    <div class="answer-text" id="answerText"></div>
+
+                    <div class="alternatives" id="alternativesSection">
+                        <div class="alternatives-label">Alternative Answers:</div>
+                        <div id="alternativesList"></div>
+                    </div>
+
+                    <div class="explanation">
+                        <div class="explanation-label">Explanation:</div>
+                        <div id="explanationText"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="navigation">
+                <button class="nav-btn prev-btn" id="prevBtn" onclick="prevQuestion()">
+                    &larr; Previous
+                </button>
+                <button class="nav-btn random-btn" onclick="randomQuestion()">
+                    Random
+                </button>
+                <button class="nav-btn next-btn" id="nextBtn" onclick="nextQuestion()">
+                    Next &rarr;
+                </button>
+            </div>
+
+            <div class="jump-section">
+                <div class="jump-label">Jump to question:</div>
+                <input type="number" class="jump-input" id="jumpInput" min="1" max="125" value="1">
+                <button class="jump-btn" onclick="jumpToQuestion()">Go</button>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>Part of <a href="../index.html">R Sessions: Introduction & Causal Inference</a></p>
+        </div>
+    </div>
+
+    <script>
+        // Quiz questions data
+        const questions = [
+            // Category 1: Vectors - Creation and Indexing (1-15)
+            {
+                question: 'You have the following vector in R:\n\nmyVec <- c("red", "green", "blue", "yellow")\n\nWrite the R code to access the element "blue".',
+                answer: 'myVec[3]',
+                alternatives: ['myVec[which(myVec == "blue")]', 'myVec[myVec == "blue"]'],
+                explanation: "Vectors in R are 1-indexed, so 'blue' is at position 3.",
+                category: "Vectors - Creation and Indexing"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(5, 10, 15, 20)\nx[c(1, 3)]',
+                answer: 'c(5, 15)',
+                alternatives: ['5 15'],
+                explanation: "Using a vector of indices returns elements at those positions.",
+                category: "Vectors - Creation and Indexing"
+            },
+            {
+                question: 'What is the output of the following code?\n\nnums <- 1:5\nnums[-2]',
+                answer: 'c(1, 3, 4, 5)',
+                alternatives: ['1 3 4 5'],
+                explanation: "Negative indexing excludes the element at that position.",
+                category: "Vectors - Creation and Indexing"
+            },
+            {
+                question: 'What is the length of the following vector?\n\nv <- c(1, 2, 3, NA, 5)\nlength(v)',
+                answer: '5',
+                alternatives: [],
+                explanation: "NA is still an element, so it counts toward the length.",
+                category: "Vectors - Creation and Indexing"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(2, 4, 6)\nx[4]',
+                answer: 'NA',
+                alternatives: [],
+                explanation: "Accessing an index beyond the vector length returns NA.",
+                category: "Vectors - Creation and Indexing"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- 5:10\nlength(x)',
+                answer: '6',
+                alternatives: [],
+                explanation: "5:10 creates c(5, 6, 7, 8, 9, 10), which has 6 elements.",
+                category: "Vectors - Creation and Indexing"
+            },
+            {
+                question: 'Write R code to create a vector containing the numbers 1 through 10.',
+                answer: '1:10',
+                alternatives: ['c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)', 'seq(1, 10)', 'seq(1, 10, by = 1)'],
+                explanation: "The colon operator is the simplest way to create a sequence.",
+                category: "Vectors - Creation and Indexing"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(1, 2, 3)\ny <- c(4, 5, 6)\nc(x, y)',
+                answer: 'c(1, 2, 3, 4, 5, 6)',
+                alternatives: ['1 2 3 4 5 6'],
+                explanation: "c() concatenates vectors into a single vector.",
+                category: "Vectors - Creation and Indexing"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c("a", "b", "c")\nx[0]',
+                answer: 'character(0)',
+                alternatives: ['An empty character vector'],
+                explanation: "Index 0 returns an empty vector of the same type.",
+                category: "Vectors - Creation and Indexing"
+            },
+            {
+                question: 'What is the output of the following code?\n\nrep(3, times = 4)',
+                answer: 'c(3, 3, 3, 3)',
+                alternatives: ['3 3 3 3'],
+                explanation: "rep() repeats a value the specified number of times.",
+                category: "Vectors - Creation and Indexing"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(10, 20, 30)\nnames(x) <- c("a", "b", "c")\nx["b"]',
+                answer: '20',
+                alternatives: ['b\\n20'],
+                explanation: "Named vectors can be indexed by name. Returns 20 with the name 'b'.",
+                category: "Vectors - Creation and Indexing"
+            },
+            {
+                question: 'What is the output of the following code?\n\nseq(2, 10, by = 2)',
+                answer: 'c(2, 4, 6, 8, 10)',
+                alternatives: ['2 4 6 8 10'],
+                explanation: "seq() creates a sequence from 2 to 10, stepping by 2.",
+                category: "Vectors - Creation and Indexing"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(5, 3, 8, 1)\nwhich.max(x)',
+                answer: '3',
+                alternatives: [],
+                explanation: "which.max() returns the INDEX of the maximum value, not the value itself.",
+                category: "Vectors - Creation and Indexing"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(5, 3, 8, 1)\nmax(x)',
+                answer: '8',
+                alternatives: [],
+                explanation: "max() returns the maximum VALUE in the vector.",
+                category: "Vectors - Creation and Indexing"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(1, 2, 3)\nx[c(TRUE, FALSE, TRUE)]',
+                answer: 'c(1, 3)',
+                alternatives: ['1 3'],
+                explanation: "Logical indexing returns elements where the index is TRUE.",
+                category: "Vectors - Creation and Indexing"
+            },
+            // Category 2: Vector Operations and Arithmetic (16-30)
+            {
+                question: 'What is the output of the following code?\n\nx <- c(1, 2, 3)\nx * 2',
+                answer: 'c(2, 4, 6)',
+                alternatives: ['2 4 6'],
+                explanation: "Scalar multiplication is applied element-wise to the vector.",
+                category: "Vector Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(1, 2, 3)\ny <- c(10, 20, 30)\nx + y',
+                answer: 'c(11, 22, 33)',
+                alternatives: ['11 22 33'],
+                explanation: "Vector addition is performed element-wise.",
+                category: "Vector Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(1, 2, 3, 4)\nsum(x)',
+                answer: '10',
+                alternatives: [],
+                explanation: "sum() adds all elements: 1 + 2 + 3 + 4 = 10.",
+                category: "Vector Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(2, 4, 6, 8)\nmean(x)',
+                answer: '5',
+                alternatives: [],
+                explanation: "mean() calculates the average: (2+4+6+8)/4 = 5.",
+                category: "Vector Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(1, 2, 3)\ny <- c(1, 2)\nx + y',
+                answer: 'c(2, 4, 4) with a warning about recycling',
+                alternatives: ['2 4 4'],
+                explanation: "R recycles the shorter vector. y becomes c(1,2,1) to match x's length. A warning is issued because 3 is not a multiple of 2.",
+                category: "Vector Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(10, 20, 30)\nx / 10',
+                answer: 'c(1, 2, 3)',
+                alternatives: ['1 2 3'],
+                explanation: "Division is applied element-wise.",
+                category: "Vector Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(1, 4, 9, 16)\nsqrt(x)',
+                answer: 'c(1, 2, 3, 4)',
+                alternatives: ['1 2 3 4'],
+                explanation: "sqrt() is applied element-wise to each value.",
+                category: "Vector Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(3, 1, 4, 1, 5)\nsort(x)',
+                answer: 'c(1, 1, 3, 4, 5)',
+                alternatives: ['1 1 3 4 5'],
+                explanation: "sort() returns a sorted vector in ascending order by default.",
+                category: "Vector Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(3, 1, 4, 1, 5)\norder(x)',
+                answer: 'c(2, 4, 1, 3, 5)',
+                alternatives: ['2 4 1 3 5'],
+                explanation: "order() returns the INDICES that would sort the vector.",
+                category: "Vector Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(5, 10, 15)\ncumsum(x)',
+                answer: 'c(5, 15, 30)',
+                alternatives: ['5 15 30'],
+                explanation: "cumsum() returns cumulative sums: 5, 5+10=15, 5+10+15=30.",
+                category: "Vector Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(2, 3, 4)\nprod(x)',
+                answer: '24',
+                alternatives: [],
+                explanation: "prod() multiplies all elements: 2 * 3 * 4 = 24.",
+                category: "Vector Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(-5, 3, -2, 8)\nabs(x)',
+                answer: 'c(5, 3, 2, 8)',
+                alternatives: ['5 3 2 8'],
+                explanation: "abs() returns absolute values element-wise.",
+                category: "Vector Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(1.7, 2.3, 3.9)\nround(x)',
+                answer: 'c(2, 2, 4)',
+                alternatives: ['2 2 4'],
+                explanation: "round() rounds to the nearest integer by default.",
+                category: "Vector Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(1.7, 2.3, 3.9)\nfloor(x)',
+                answer: 'c(1, 2, 3)',
+                alternatives: ['1 2 3'],
+                explanation: "floor() rounds DOWN to the nearest integer.",
+                category: "Vector Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(1.7, 2.3, 3.9)\nceiling(x)',
+                answer: 'c(2, 3, 4)',
+                alternatives: ['2 3 4'],
+                explanation: "ceiling() rounds UP to the nearest integer.",
+                category: "Vector Operations"
+            },
+            // Category 3: Logical Operations (31-45)
+            {
+                question: 'What is the output of the following code?\n\nx <- c(TRUE, FALSE, TRUE, TRUE)\nsum(x)',
+                answer: '3',
+                alternatives: [],
+                explanation: "TRUE is treated as 1 and FALSE as 0, so sum counts the TRUEs.",
+                category: "Logical Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(5, 10, 15, 20)\nx > 10',
+                answer: 'c(FALSE, FALSE, TRUE, TRUE)',
+                alternatives: ['FALSE FALSE TRUE TRUE'],
+                explanation: "Comparison operators are applied element-wise, returning a logical vector.",
+                category: "Logical Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(5, 10, 15, 20)\nx >= 10',
+                answer: 'c(FALSE, TRUE, TRUE, TRUE)',
+                alternatives: ['FALSE TRUE TRUE TRUE'],
+                explanation: ">= means greater than OR equal to.",
+                category: "Logical Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- 5\nx == 5',
+                answer: 'TRUE',
+                alternatives: [],
+                explanation: "== tests for equality and returns TRUE or FALSE.",
+                category: "Logical Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\nTRUE & FALSE',
+                answer: 'FALSE',
+                alternatives: [],
+                explanation: "& is logical AND. Both must be TRUE to return TRUE.",
+                category: "Logical Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\nTRUE | FALSE',
+                answer: 'TRUE',
+                alternatives: [],
+                explanation: "| is logical OR. At least one must be TRUE to return TRUE.",
+                category: "Logical Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\n!TRUE',
+                answer: 'FALSE',
+                alternatives: [],
+                explanation: "! is logical NOT. It flips TRUE to FALSE and vice versa.",
+                category: "Logical Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(1, 2, 3, 4, 5)\nany(x > 4)',
+                answer: 'TRUE',
+                alternatives: [],
+                explanation: "any() returns TRUE if at least one element satisfies the condition.",
+                category: "Logical Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(1, 2, 3, 4, 5)\nall(x > 0)',
+                answer: 'TRUE',
+                alternatives: [],
+                explanation: "all() returns TRUE only if ALL elements satisfy the condition.",
+                category: "Logical Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(1, 2, 3, 4, 5)\nall(x > 2)',
+                answer: 'FALSE',
+                alternatives: [],
+                explanation: "all() returns FALSE because 1 and 2 are not greater than 2.",
+                category: "Logical Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(10, 20, 30, 40)\nwhich(x > 25)',
+                answer: 'c(3, 4)',
+                alternatives: ['3 4'],
+                explanation: "which() returns the INDICES where the condition is TRUE.",
+                category: "Logical Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(10, 20, 30, 40)\nx[x > 25]',
+                answer: 'c(30, 40)',
+                alternatives: ['30 40'],
+                explanation: "This filters the vector to only elements where condition is TRUE.",
+                category: "Logical Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(1, 2, 3)\ny <- c(1, 5, 3)\nx == y',
+                answer: 'c(TRUE, FALSE, TRUE)',
+                alternatives: ['TRUE FALSE TRUE'],
+                explanation: "== compares element-wise and returns a logical vector.",
+                category: "Logical Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\n5 %in% c(1, 3, 5, 7)',
+                answer: 'TRUE',
+                alternatives: [],
+                explanation: "%in% checks if the value is present in the vector.",
+                category: "Logical Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\nc(2, 4) %in% c(1, 2, 3)',
+                answer: 'c(TRUE, FALSE)',
+                alternatives: ['TRUE FALSE'],
+                explanation: "%in% checks each element of the left vector against the right vector.",
+                category: "Logical Operations"
+            },
+            // Category 4: ifelse() and Conditionals (46-55)
+            {
+                question: 'What is the output of the following code?\n\nx <- c(1, 2, 3, 4, 5)\nifelse(x > 3, "high", "low")',
+                answer: 'c("low", "low", "low", "high", "high")',
+                alternatives: ['"low" "low" "low" "high" "high"'],
+                explanation: "ifelse() applies the condition element-wise and returns the appropriate value.",
+                category: "ifelse() and Conditionals"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(-2, 0, 3, -5)\nifelse(x >= 0, x, 0)',
+                answer: 'c(0, 0, 3, 0)',
+                alternatives: ['0 0 3 0'],
+                explanation: "This replaces negative values with 0, keeping non-negative values.",
+                category: "ifelse() and Conditionals"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(80, 65, 90, 55)\nifelse(x >= 60, "pass", "fail")',
+                answer: 'c("pass", "pass", "pass", "fail")',
+                alternatives: ['"pass" "pass" "pass" "fail"'],
+                explanation: "ifelse() classifies each grade as pass or fail based on the threshold.",
+                category: "ifelse() and Conditionals"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(2, 4, 6, 8)\nifelse(x %% 2 == 0, "even", "odd")',
+                answer: 'c("even", "even", "even", "even")',
+                alternatives: ['"even" "even" "even" "even"'],
+                explanation: "%% is the modulo operator. All values are divisible by 2, so all are even.",
+                category: "ifelse() and Conditionals"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(1, 2, 3, 4, 5)\nifelse(x %% 2 == 0, "even", "odd")',
+                answer: 'c("odd", "even", "odd", "even", "odd")',
+                alternatives: ['"odd" "even" "odd" "even" "odd"'],
+                explanation: "Checks if each number is divisible by 2 to classify as even or odd.",
+                category: "ifelse() and Conditionals"
+            },
+            {
+                question: 'What does the %% operator do in R? What is the output of: 7 %% 3',
+                answer: '1 (modulo operator - returns the remainder after division: 7 / 3 = 2 remainder 1)',
+                alternatives: [],
+                explanation: "%% is the modulo operator. 7 divided by 3 is 2 with remainder 1.",
+                category: "ifelse() and Conditionals"
+            },
+            {
+                question: 'What does the %/% operator do in R? What is the output of: 7 %/% 3',
+                answer: '2 (integer division - returns the quotient without remainder)',
+                alternatives: [],
+                explanation: "%/% is integer division. 7 divided by 3 is 2 (ignoring remainder).",
+                category: "ifelse() and Conditionals"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- NA\nifelse(is.na(x), 0, x)',
+                answer: '0',
+                alternatives: [],
+                explanation: "is.na(x) is TRUE, so ifelse returns 0. This is a common pattern to replace NAs.",
+                category: "ifelse() and Conditionals"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(1, NA, 3, NA, 5)\nifelse(is.na(x), 0, x)',
+                answer: 'c(1, 0, 3, 0, 5)',
+                alternatives: ['1 0 3 0 5'],
+                explanation: "Replaces all NA values with 0, keeps other values unchanged.",
+                category: "ifelse() and Conditionals"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(10, 20, 30)\nifelse(x == 20, x * 2, x)',
+                answer: 'c(10, 40, 30)',
+                alternatives: ['10 40 30'],
+                explanation: "Only the element equal to 20 is doubled; others remain unchanged.",
+                category: "ifelse() and Conditionals"
+            },
+            // Category 5: Data Types and Coercion (56-65)
+            {
+                question: 'What is the output of the following code?\n\nclass(5)',
+                answer: '"numeric"',
+                alternatives: ['numeric'],
+                explanation: "Numbers in R are numeric by default (double precision).",
+                category: "Data Types and Coercion"
+            },
+            {
+                question: 'What is the output of the following code?\n\nclass("hello")',
+                answer: '"character"',
+                alternatives: ['character'],
+                explanation: "Text enclosed in quotes is of class character.",
+                category: "Data Types and Coercion"
+            },
+            {
+                question: 'What is the output of the following code?\n\nclass(TRUE)',
+                answer: '"logical"',
+                alternatives: ['logical'],
+                explanation: "TRUE and FALSE are of class logical.",
+                category: "Data Types and Coercion"
+            },
+            {
+                question: 'What is the output of the following code?\n\nas.numeric("42")',
+                answer: '42',
+                alternatives: [],
+                explanation: "as.numeric() converts a character string to a number.",
+                category: "Data Types and Coercion"
+            },
+            {
+                question: 'What is the output of the following code?\n\nas.numeric("hello")',
+                answer: 'NA (with a warning: NAs introduced by coercion)',
+                alternatives: ['NA'],
+                explanation: '"hello" cannot be converted to a number, so R returns NA.',
+                category: "Data Types and Coercion"
+            },
+            {
+                question: 'What is the output of the following code?\n\nas.character(123)',
+                answer: '"123"',
+                alternatives: ['123'],
+                explanation: "as.character() converts a number to a character string.",
+                category: "Data Types and Coercion"
+            },
+            {
+                question: 'What is the output of the following code?\n\nas.logical(0)',
+                answer: 'FALSE',
+                alternatives: [],
+                explanation: "0 converts to FALSE; any non-zero number converts to TRUE.",
+                category: "Data Types and Coercion"
+            },
+            {
+                question: 'What is the output of the following code?\n\nas.logical(5)',
+                answer: 'TRUE',
+                alternatives: [],
+                explanation: "Any non-zero number converts to TRUE.",
+                category: "Data Types and Coercion"
+            },
+            {
+                question: 'What is the output of the following code?\n\nc(1, "two", 3)',
+                answer: 'c("1", "two", "3")',
+                alternatives: ['"1" "two" "3"'],
+                explanation: "Vectors can only hold one type. R coerces all elements to character (the most flexible type).",
+                category: "Data Types and Coercion"
+            },
+            {
+                question: 'What is the output of the following code?\n\nc(TRUE, FALSE, 1, 0)',
+                answer: 'c(1, 0, 1, 0)',
+                alternatives: ['1 0 1 0'],
+                explanation: "Logical values are coerced to numeric: TRUE becomes 1, FALSE becomes 0.",
+                category: "Data Types and Coercion"
+            },
+            // Category 6: Data Frames (66-80)
+            {
+                question: 'You have a dataframe df with columns "name", "age", "score".\nWrite R code to access the "age" column.',
+                answer: 'df$age',
+                alternatives: ['df[, "age"]', 'df[["age"]]', 'df[, 2]'],
+                explanation: "The $ operator is the most common way to access a column by name.",
+                category: "Data Frames"
+            },
+            {
+                question: 'What is the output of the following code?\n\ndf <- data.frame(x = c(1, 2, 3), y = c(4, 5, 6))\nnrow(df)',
+                answer: '3',
+                alternatives: [],
+                explanation: "nrow() returns the number of rows in a dataframe.",
+                category: "Data Frames"
+            },
+            {
+                question: 'What is the output of the following code?\n\ndf <- data.frame(x = c(1, 2, 3), y = c(4, 5, 6))\nncol(df)',
+                answer: '2',
+                alternatives: [],
+                explanation: "ncol() returns the number of columns in a dataframe.",
+                category: "Data Frames"
+            },
+            {
+                question: 'What is the output of the following code?\n\ndf <- data.frame(x = c(1, 2, 3), y = c(4, 5, 6))\ndim(df)',
+                answer: 'c(3, 2) or 3 2',
+                alternatives: ['3 2'],
+                explanation: "dim() returns a vector with number of rows and columns.",
+                category: "Data Frames"
+            },
+            {
+                question: 'What is the output of the following code?\n\ndf <- data.frame(a = 1:3, b = 4:6)\ndf[2, 1]',
+                answer: '2',
+                alternatives: [],
+                explanation: "df[row, column] - returns value at row 2, column 1.",
+                category: "Data Frames"
+            },
+            {
+                question: 'What is the output of the following code?\n\ndf <- data.frame(a = 1:3, b = 4:6)\ndf[1, ]',
+                answer: 'A dataframe row with a = 1 and b = 4',
+                alternatives: ['1 4'],
+                explanation: "Leaving column blank returns the entire first row.",
+                category: "Data Frames"
+            },
+            {
+                question: 'You want to filter a dataframe df to only rows where column x > 5.\nComplete this code: df[___, ]',
+                answer: 'df[df$x > 5, ]',
+                alternatives: ['df[df$x > 5, , drop = FALSE]'],
+                explanation: "Put the logical condition before the comma to filter rows.",
+                category: "Data Frames"
+            },
+            {
+                question: 'What is wrong with this code and how do you fix it?\n\ndf[df$x > 5]\n\nError: undefined columns selected',
+                answer: 'Missing comma. Should be: df[df$x > 5, ]',
+                alternatives: [],
+                explanation: "When subsetting dataframes, you need [rows, columns]. The comma is required.",
+                category: "Data Frames"
+            },
+            {
+                question: 'What is the output of the following code?\n\ndf <- data.frame(x = c(1, 2, 3), y = c("a", "b", "c"))\nnames(df)',
+                answer: 'c("x", "y")',
+                alternatives: ['"x" "y"'],
+                explanation: "names() returns the column names of a dataframe.",
+                category: "Data Frames"
+            },
+            {
+                question: "Write R code to add a new column called 'z' with values c(7, 8, 9) to dataframe df.",
+                answer: 'df$z <- c(7, 8, 9)',
+                alternatives: ['df[["z"]] <- c(7, 8, 9)', 'df["z"] <- c(7, 8, 9)'],
+                explanation: "Assign to a new column name using $ or [[ ]] to add a column.",
+                category: "Data Frames"
+            },
+            {
+                question: 'What is the output of the following code?\n\ndf <- data.frame(x = c(1, 2, NA, 4))\nsum(is.na(df$x))',
+                answer: '1',
+                alternatives: [],
+                explanation: "is.na() returns TRUE for NA values. sum() counts the TRUEs.",
+                category: "Data Frames"
+            },
+            {
+                question: 'What is the output of the following code?\n\ndf <- data.frame(x = c(1, 2, 3), y = c(4, 5, 6))\ndf$x + df$y',
+                answer: 'c(5, 7, 9)',
+                alternatives: ['5 7 9'],
+                explanation: "Columns are vectors, so addition is element-wise: 1+4, 2+5, 3+6.",
+                category: "Data Frames"
+            },
+            {
+                question: 'What is the output of the following code?\n\ndf <- data.frame(name = c("A", "B", "C"), val = c(10, 20, 30))\ndf[df$val == max(df$val), "name"]',
+                answer: '"C"',
+                alternatives: ['C'],
+                explanation: "Finds the row where val is maximum (30) and returns the name column value.",
+                category: "Data Frames"
+            },
+            {
+                question: 'Write R code to sort dataframe df by column "age" in ascending order.',
+                answer: 'df[order(df$age), ]',
+                alternatives: ['df[order(df$age, decreasing = FALSE), ]'],
+                explanation: "order() returns indices that would sort the vector. Use these to reorder rows.",
+                category: "Data Frames"
+            },
+            {
+                question: 'Write R code to sort dataframe df by column "age" in DESCENDING order.',
+                answer: 'df[order(df$age, decreasing = TRUE), ]',
+                alternatives: ['df[order(-df$age), ]'],
+                explanation: "Use decreasing = TRUE or put a minus sign before the column.",
+                category: "Data Frames"
+            },
+            // Category 7: NA Handling (81-88)
+            {
+                question: 'What is the output of the following code?\n\nx <- c(1, 2, NA, 4)\nsum(x)',
+                answer: 'NA',
+                alternatives: [],
+                explanation: "Operations involving NA return NA by default.",
+                category: "NA Handling"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(1, 2, NA, 4)\nsum(x, na.rm = TRUE)',
+                answer: '7',
+                alternatives: [],
+                explanation: "na.rm = TRUE removes NA values before calculation: 1+2+4 = 7.",
+                category: "NA Handling"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(1, 2, NA, 4)\nmean(x, na.rm = TRUE)',
+                answer: '2.333... (or 7/3)',
+                alternatives: ['2.333333'],
+                explanation: "Calculates mean of non-NA values: (1+2+4)/3 = 7/3.",
+                category: "NA Handling"
+            },
+            {
+                question: 'What is the output of the following code?\n\nis.na(NA)',
+                answer: 'TRUE',
+                alternatives: [],
+                explanation: "is.na() tests if a value is NA.",
+                category: "NA Handling"
+            },
+            {
+                question: 'What is the output of the following code?\n\nNA == NA',
+                answer: 'NA',
+                alternatives: [],
+                explanation: "You cannot compare NA with ==. Use is.na() instead.",
+                category: "NA Handling"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(1, NA, 3)\nx[!is.na(x)]',
+                answer: 'c(1, 3)',
+                alternatives: ['1 3'],
+                explanation: "!is.na(x) is TRUE where x is not NA. This filters out NA values.",
+                category: "NA Handling"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(1, NA, 3, NA, 5)\nna.omit(x)',
+                answer: 'c(1, 3, 5) (removes all NA values)',
+                alternatives: ['1 3 5'],
+                explanation: "na.omit() removes all NA values from a vector.",
+                category: "NA Handling"
+            },
+            {
+                question: 'Write R code to replace all NA values in vector x with 0.',
+                answer: 'x[is.na(x)] <- 0',
+                alternatives: ['ifelse(is.na(x), 0, x)', 'x <- replace(x, is.na(x), 0)'],
+                explanation: "Use logical indexing to select NA positions and assign 0.",
+                category: "NA Handling"
+            },
+            // Category 8: String Operations (89-95)
+            {
+                question: 'What is the output of the following code?\n\npaste("Hello", "World")',
+                answer: '"Hello World"',
+                alternatives: ['Hello World'],
+                explanation: "paste() concatenates strings with a space separator by default.",
+                category: "String Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\npaste("Hello", "World", sep = "-")',
+                answer: '"Hello-World"',
+                alternatives: ['Hello-World'],
+                explanation: "sep parameter specifies the separator between strings.",
+                category: "String Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\npaste0("Hello", "World")',
+                answer: '"HelloWorld"',
+                alternatives: ['HelloWorld'],
+                explanation: "paste0() is paste() with sep = '' (no separator).",
+                category: "String Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\nnchar("Hello")',
+                answer: '5',
+                alternatives: [],
+                explanation: "nchar() returns the number of characters in a string.",
+                category: "String Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\ntoupper("hello")',
+                answer: '"HELLO"',
+                alternatives: ['HELLO'],
+                explanation: "toupper() converts a string to uppercase.",
+                category: "String Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\ntolower("HELLO")',
+                answer: '"hello"',
+                alternatives: ['hello'],
+                explanation: "tolower() converts a string to lowercase.",
+                category: "String Operations"
+            },
+            {
+                question: 'What is the output of the following code?\n\nsubstr("Hello World", 1, 5)',
+                answer: '"Hello"',
+                alternatives: ['Hello'],
+                explanation: "substr() extracts characters from position 1 to 5.",
+                category: "String Operations"
+            },
+            // Category 9: Combined Concepts (96-105)
+            {
+                question: 'What is the output of the following code?\n\nx <- c(10, 20, 30, 40, 50)\nx[which(x > 25 & x < 45)]',
+                answer: 'c(30, 40)',
+                alternatives: ['30 40'],
+                explanation: "which() finds indices where both conditions are TRUE (30 and 40), then those values are extracted.",
+                category: "Combined Concepts"
+            },
+            {
+                question: 'What is the output of the following code?\n\ndf <- data.frame(name = c("A", "B", "C", "D"), score = c(85, 60, 92, 78))\ndf[df$score > 75, "name"]',
+                answer: 'c("A", "C", "D")',
+                alternatives: ['"A" "C" "D"'],
+                explanation: "Filters rows where score > 75, then returns only the name column.",
+                category: "Combined Concepts"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(5, 10, 15, 20)\nsum(x[x %% 2 == 0])',
+                answer: '30',
+                alternatives: [],
+                explanation: "Filters to even numbers (10, 20) then sums them: 10 + 20 = 30.",
+                category: "Combined Concepts"
+            },
+            {
+                question: 'What is the output of the following code?\n\ndf <- data.frame(x = c(1, 2, 3), y = c(4, 5, 6))\ndf[order(df$y, decreasing = TRUE), ]$x',
+                answer: 'c(3, 2, 1)',
+                alternatives: ['3 2 1'],
+                explanation: "Sorts df by y descending, then extracts the x column.",
+                category: "Combined Concepts"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(1, 2, NA, 4, 5)\nmean(x[!is.na(x)])',
+                answer: '3',
+                alternatives: [],
+                explanation: "Filters out NA, then calculates mean of (1,2,4,5) = 12/4 = 3.",
+                category: "Combined Concepts"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c("apple", "banana", "cherry")\nx[nchar(x) > 5]',
+                answer: 'c("banana", "cherry")',
+                alternatives: ['"banana" "cherry"'],
+                explanation: 'Filters strings with more than 5 characters. "apple" has 5, "banana" has 6, "cherry" has 6.',
+                category: "Combined Concepts"
+            },
+            {
+                question: 'What is the output of the following code?\n\ndf <- data.frame(a = c(1, 2, 3), b = c(4, 5, 6))\ndf$c <- df$a + df$b\nsum(df$c)',
+                answer: '21',
+                alternatives: [],
+                explanation: "Creates column c = (5,7,9), then sums: 5+7+9 = 21.",
+                category: "Combined Concepts"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- 1:10\nlength(x[x > 5 & x < 9])',
+                answer: '3',
+                alternatives: [],
+                explanation: "Values satisfying both conditions: 6, 7, 8. Length is 3.",
+                category: "Combined Concepts"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(3, 1, 4, 1, 5)\nx[order(x)][1:3]',
+                answer: 'c(1, 1, 3)',
+                alternatives: ['1 1 3'],
+                explanation: "Sorts x to (1,1,3,4,5), then takes first 3 elements.",
+                category: "Combined Concepts"
+            },
+            {
+                question: 'What is the output of the following code?\n\ndf <- data.frame(x = c(1, 2, 3), y = c("a", "b", "c"))\ndf[df$x %in% c(1, 3), ]',
+                answer: "A dataframe with 2 rows: (x=1, y='a') and (x=3, y='c')",
+                alternatives: [],
+                explanation: "%in% selects rows where x is either 1 or 3.",
+                category: "Combined Concepts"
+            },
+            // Category 10: For Loops (106-115)
+            {
+                question: 'What is the output of the following code?\n\ntotal <- 0\nfor (i in 1:4) {\n  total <- total + i\n}\ntotal',
+                answer: '10',
+                alternatives: [],
+                explanation: "Loop adds 1+2+3+4 = 10.",
+                category: "For Loops"
+            },
+            {
+                question: 'What is the output of the following code?\n\nresult <- c()\nfor (i in 1:3) {\n  result <- c(result, i^2)\n}\nresult',
+                answer: 'c(1, 4, 9)',
+                alternatives: ['1 4 9'],
+                explanation: "Loop appends 1^2=1, 2^2=4, 3^2=9 to result.",
+                category: "For Loops"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(2, 4, 6)\ntotal <- 0\nfor (val in x) {\n  total <- total + val\n}\ntotal',
+                answer: '12',
+                alternatives: [],
+                explanation: "Loop iterates over values in x and sums them: 2+4+6 = 12.",
+                category: "For Loops"
+            },
+            {
+                question: 'Write a for loop that calculates the mean of vector x <- c(10, 20, 30, 40).\nWhat is the final result?',
+                answer: '25\n\nCode:\ntotal <- 0\nfor (val in x) {\n  total <- total + val\n}\nmy_mean <- total / length(x)',
+                alternatives: [],
+                explanation: "Sum all values (100), divide by count (4): 100/4 = 25.",
+                category: "For Loops"
+            },
+            {
+                question: 'What is the output of the following code?\n\ncount <- 0\nfor (i in 1:10) {\n  if (i %% 2 == 0) {\n    count <- count + 1\n  }\n}\ncount',
+                answer: '5',
+                alternatives: [],
+                explanation: "Counts even numbers from 1 to 10: 2,4,6,8,10 = 5 numbers.",
+                category: "For Loops"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(3, 7, 2, 9, 4)\nmax_val <- x[1]\nfor (i in 2:length(x)) {\n  if (x[i] > max_val) {\n    max_val <- x[i]\n  }\n}\nmax_val',
+                answer: '9',
+                alternatives: [],
+                explanation: "This manually finds the maximum value in the vector.",
+                category: "For Loops"
+            },
+            {
+                question: 'Write a for loop to calculate the sum of squares for x <- c(1, 2, 3).\nWhat is the result?',
+                answer: '14\n\nCode:\nsum_sq <- 0\nfor (val in x) {\n  sum_sq <- sum_sq + val^2\n}',
+                alternatives: [],
+                explanation: "1^2 + 2^2 + 3^2 = 1 + 4 + 9 = 14.",
+                category: "For Loops"
+            },
+            {
+                question: 'What is the output of the following code?\n\nresult <- 1\nfor (i in 1:4) {\n  result <- result * i\n}\nresult',
+                answer: '24 (this calculates 4! = 1*2*3*4)',
+                alternatives: ['24'],
+                explanation: "This calculates the factorial: 1*1*2*3*4 = 24.",
+                category: "For Loops"
+            },
+            {
+                question: 'What is the output of the following code?\n\ntotal <- 0\nfor (i in 1:2) {\n  for (j in 1:3) {\n    total <- total + 1\n  }\n}\ntotal',
+                answer: '6',
+                alternatives: [],
+                explanation: "Outer loop runs 2 times, inner loop runs 3 times each = 2*3 = 6 iterations.",
+                category: "For Loops"
+            },
+            {
+                question: 'What is the output of the following code?\n\nx <- c(1, 2, 3, 4, 5)\nresult <- c()\nfor (i in 1:length(x)) {\n  if (x[i] > 2) {\n    result <- c(result, x[i] * 10)\n  }\n}\nresult',
+                answer: 'c(30, 40, 50)',
+                alternatives: ['30 40 50'],
+                explanation: "Filters values > 2 (3,4,5) and multiplies each by 10.",
+                category: "For Loops"
+            },
+            // Category 11: Error Fixing (116-125)
+            {
+                question: 'The following code produces an error. What is wrong and how do you fix it?\n\ndf <- data.frame(a = 1:3, b = 4:6)\ndf[df$a > 1]\n\nError: undefined columns selected',
+                answer: 'Missing comma for row subsetting. Fix: df[df$a > 1, ]',
+                alternatives: [],
+                explanation: "When filtering rows in a dataframe, you need [condition, ] with a comma.",
+                category: "Error Fixing"
+            },
+            {
+                question: "The following code produces an error. What is wrong and how do you fix it?\n\nx <- c(1, 2, 3\n)\n\nError: unexpected ')'",
+                answer: "The closing parenthesis should be on the same line or the opening should indicate continuation.\nFix: x <- c(1, 2, 3)",
+                alternatives: [],
+                explanation: "R doesn't automatically continue lines unless there's an unclosed bracket on the same line.",
+                category: "Error Fixing"
+            },
+            {
+                question: 'The following code produces a warning. What causes it and what is the output?\n\nx <- c(1, 2, 3)\ny <- c(1, 2)\nx + y',
+                answer: 'Warning: longer object length is not a multiple of shorter object length.\nOutput: c(2, 4, 4)\nR recycles y to c(1, 2, 1) to match length.',
+                alternatives: [],
+                explanation: "Vector recycling happens but warns when lengths aren't multiples.",
+                category: "Error Fixing"
+            },
+            {
+                question: "The following function has a bug. Find and fix it.\n\nmy_mean <- function(x) {\n  total <- 0\n  for (val in x) {\n    total <- total + x\n  }\n  return(total / length(x))\n}",
+                answer: "Bug: 'total + x' should be 'total + val'.\nThe loop variable is 'val', not 'x'. Using x adds the entire vector each iteration.",
+                alternatives: [],
+                explanation: "Inside the loop, we want to add each element (val), not the whole vector (x).",
+                category: "Error Fixing"
+            },
+            {
+                question: 'The following code returns NA. Why and how do you fix it?\n\nx <- c(1, 2, NA, 4)\nmean(x)',
+                answer: 'NA is present in the vector. Fix: mean(x, na.rm = TRUE)\nResult: 2.333...',
+                alternatives: [],
+                explanation: "By default, functions return NA if any input is NA. Use na.rm = TRUE.",
+                category: "Error Fixing"
+            },
+            {
+                question: 'The following code produces an error. What is wrong and how do you fix it?\n\nx <- "5"\nx + 10\n\nError: non-numeric argument to binary operator',
+                answer: '"5" is a character, not a number. Fix: as.numeric(x) + 10 or x <- 5',
+                alternatives: [],
+                explanation: "Cannot perform arithmetic on character strings. Convert to numeric first.",
+                category: "Error Fixing"
+            },
+            {
+                question: "This function to calculate variance has a bug. Find and fix it.\n\nmy_var <- function(x) {\n  m <- mean(x)\n  total <- 0\n  for (i in x) {\n    total <- total + (x - m)^2\n  }\n  return(total / length(x))\n}",
+                answer: "Bug: (x - m)^2 should be (i - m)^2.\nThe loop variable is 'i', representing each element.\nAlso, for sample variance, divide by (length(x) - 1).",
+                alternatives: [],
+                explanation: "Inside the loop, use the loop variable (i), not the whole vector (x).",
+                category: "Error Fixing"
+            },
+            {
+                question: "The following code produces an error. What is wrong?\n\ndf <- data.frame(x = c(1, 2, 3))\ndf[x > 1, ]\n\nError: object 'x' not found",
+                answer: 'Need to reference column with df$x.\nFix: df[df$x > 1, ]',
+                alternatives: [],
+                explanation: "Inside brackets, R looks for object 'x' in the environment, not in df. Use df$x.",
+                category: "Error Fixing"
+            },
+            {
+                question: 'The following code produces a warning. What is wrong?\n\nx <- c(1, 2, 3)\nif (x > 2) { print("big") }\n\nWarning: the condition has length > 1',
+                answer: "if() expects a single TRUE/FALSE, but x > 2 returns a vector.\nFix: Use any(x > 2) or all(x > 2), or use ifelse() for element-wise operation.",
+                alternatives: [],
+                explanation: "if() is for single conditions. For vectors, use any(), all(), or ifelse().",
+                category: "Error Fixing"
+            },
+            {
+                question: 'Why does this comparison return FALSE?\n\nx <- 0.1 + 0.2\nx == 0.3',
+                answer: 'FALSE due to floating-point precision errors.\n0.1 + 0.2 is actually 0.30000000000000004...\nFix: Use all.equal(x, 0.3) or abs(x - 0.3) < 1e-10',
+                alternatives: [],
+                explanation: "Computers store decimals in binary, causing tiny precision errors. Never use == for floating-point comparison.",
+                category: "Error Fixing"
+            }
+        ];
+
+        let currentQuestion = 0;
+        let filteredQuestions = [...Array(questions.length).keys()];
+
+        function formatQuestion(text) {
+            // Convert code blocks (lines starting with spaces or containing code patterns)
+            const lines = text.split('\n');
+            let inCodeBlock = false;
+            let result = [];
+            let codeBuffer = [];
+
+            for (let line of lines) {
+                // Check if line looks like code
+                const isCode = line.match(/^[a-zA-Z_][a-zA-Z0-9_]*\s*(<-|=)/) ||
+                               line.match(/^(for|if|while|function)\s*\(/) ||
+                               line.match(/^\s{2,}/) ||
+                               line.match(/^[}\)]/) ||
+                               line.match(/^(Error|Warning):/) ||
+                               (inCodeBlock && line.trim() !== '' && !line.match(/^[A-Z]/));
+
+                if (isCode || (inCodeBlock && line.trim() === '')) {
+                    if (!inCodeBlock && codeBuffer.length === 0) {
+                        inCodeBlock = true;
+                    }
+                    codeBuffer.push(line);
+                } else {
+                    if (codeBuffer.length > 0) {
+                        result.push('<pre>' + codeBuffer.join('\n') + '</pre>');
+                        codeBuffer = [];
+                        inCodeBlock = false;
+                    }
+                    if (line.trim() !== '') {
+                        result.push('<p>' + line + '</p>');
+                    }
+                }
+            }
+
+            if (codeBuffer.length > 0) {
+                result.push('<pre>' + codeBuffer.join('\n') + '</pre>');
+            }
+
+            return result.join('');
+        }
+
+        function displayQuestion() {
+            const qIndex = filteredQuestions[currentQuestion];
+            const q = questions[qIndex];
+
+            document.getElementById('questionCounter').textContent =
+                `Question ${currentQuestion + 1} of ${filteredQuestions.length} (Q${qIndex + 1})`;
+
+            document.getElementById('progressFill').style.width =
+                ((currentQuestion + 1) / filteredQuestions.length * 100) + '%';
+
+            document.getElementById('categoryBadge').textContent = q.category;
+            document.getElementById('questionText').innerHTML = formatQuestion(q.question);
+            document.getElementById('answerText').textContent = q.answer;
+
+            // Handle alternatives
+            const altSection = document.getElementById('alternativesSection');
+            const altList = document.getElementById('alternativesList');
+            if (q.alternatives && q.alternatives.length > 0) {
+                altSection.style.display = 'block';
+                altList.innerHTML = q.alternatives.map(alt =>
+                    `<div class="alternative-item">${alt}</div>`
+                ).join('');
+            } else {
+                altSection.style.display = 'none';
+            }
+
+            document.getElementById('explanationText').textContent = q.explanation;
+
+            // Hide answer
+            document.getElementById('answerContent').classList.remove('show');
+            document.getElementById('showAnswerBtn').textContent = 'Show Answer';
+
+            // Update navigation buttons
+            document.getElementById('prevBtn').disabled = currentQuestion === 0;
+            document.getElementById('nextBtn').disabled = currentQuestion === filteredQuestions.length - 1;
+
+            document.getElementById('jumpInput').value = qIndex + 1;
+        }
+
+        function toggleAnswer() {
+            const answerContent = document.getElementById('answerContent');
+            const btn = document.getElementById('showAnswerBtn');
+
+            if (answerContent.classList.contains('show')) {
+                answerContent.classList.remove('show');
+                btn.textContent = 'Show Answer';
+            } else {
+                answerContent.classList.add('show');
+                btn.textContent = 'Hide Answer';
+            }
+        }
+
+        function nextQuestion() {
+            if (currentQuestion < filteredQuestions.length - 1) {
+                currentQuestion++;
+                displayQuestion();
+            }
+        }
+
+        function prevQuestion() {
+            if (currentQuestion > 0) {
+                currentQuestion--;
+                displayQuestion();
+            }
+        }
+
+        function randomQuestion() {
+            currentQuestion = Math.floor(Math.random() * filteredQuestions.length);
+            displayQuestion();
+        }
+
+        function jumpToQuestion() {
+            const input = document.getElementById('jumpInput');
+            const qNum = parseInt(input.value) - 1;
+
+            if (qNum >= 0 && qNum < questions.length) {
+                // Find this question in filtered list
+                const filteredIndex = filteredQuestions.indexOf(qNum);
+                if (filteredIndex !== -1) {
+                    currentQuestion = filteredIndex;
+                } else {
+                    // Reset filter and go to question
+                    document.getElementById('categorySelect').value = 'all';
+                    filteredQuestions = [...Array(questions.length).keys()];
+                    currentQuestion = qNum;
+                }
+                displayQuestion();
+            }
+        }
+
+        function filterByCategory() {
+            const select = document.getElementById('categorySelect');
+            const value = select.value;
+
+            if (value === 'all') {
+                filteredQuestions = [...Array(questions.length).keys()];
+            } else {
+                const [start, end] = value.split('-').map(n => parseInt(n));
+                filteredQuestions = [];
+                for (let i = start - 1; i < end; i++) {
+                    filteredQuestions.push(i);
+                }
+            }
+
+            currentQuestion = 0;
+            displayQuestion();
+        }
+
+        // Initialize
+        displayQuestion();
+    </script>
+</body>
+</html>

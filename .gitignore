@@ -2,6 +2,7 @@
 Operational/
 .claude/
 textbook/
+quiz/
 
 
 # R project files
@@ -40,6 +41,8 @@ Session\ 2.5/prompt.md
 Session\ 2.5/Rplots.pdf
 Session\ 2.5/SESSION_2.5_OVERVIEW.md
 
+Session\ 3/archive/
+
 
 # General R files
 *.Rhistory
@@ -51,3 +54,4 @@ Session\ 1.5\ \(optional\ session\)/R/test.R
 practice-causality/images/*.pdf
 practice-causality/results/
 practice-causality/*.rds
+

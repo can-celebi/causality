@@ -1,0 +1,802 @@
+---
+title: "Session 3: Difference-in-Differences"
+author: "Causal Inference – CEU"
+date: "2025"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# 1. Card & Krueger: Minimum Wage and Employment
+
+In 1994, Card and Krueger studied the effect of a minimum wage increase in New Jersey on fast-food restaurant employment. Pennsylvania, which did not raise its minimum wage, serves as the control group. This is one of the most famous applications of Difference-in-Differences (DiD).
+
+## 1.1 Loading and preparing the data
+
+```{r}
+x <- read.csv("ck_minwage.csv")
+
+head(x)
+
+nrow(x)
+
+dim(x)
+```
+
+The dataset is in **long format** — each row is one restaurant observed at one point in time:
+
+- `fte`: number of full-time equivalent employees (we rename this to `nWorker`)
+- `treated`: which state (NJ or PA)
+- `t`: time period (0 = before, 1 = after)
+
+```{r}
+# NJ raised the minimum wage, PA did not
+# let's rename columns to be more descriptive
+
+names(x)
+
+names(x)[3] <- "state"
+
+names(x)[2] <- "time"
+
+names(x)[4] <- "nWorker"
+
+head(x)
+```
+
+## 1.2 Creating the state and interaction variables
+
+```{r}
+# state dummy: 1 = NJ (the state where the policy was introduced), 0 = PA
+x$state01 <- ifelse(x$state == "NJ", 1, 0)
+
+# interaction dummy between state and time — this is the DiD variable
+x$interactionDummy <- x$time * x$state01
+```
+
+## 1.3 Exploring group means
+
+```{r}
+mean(x$nWorker[x$time == 0])
+
+mean(x$nWorker[x$time == 1])
+
+mean(x$nWorker[x$state01 == 0])
+
+mean(x$nWorker[x$state01 == 1])
+```
+
+## 1.4 Building up to DiD: a series of regressions
+
+### Simple regression: nWorker on state only
+
+```{r}
+# m1.1: nWorker on state only
+m1.1 <- lm(nWorker ~ state01, data = x)
+summary(m1.1)
+```
+
+The state coefficient is just the difference in means between NJ and PA (collapsing time):
+
+```{r}
+m1.1$coefficients["state01"]
+mean(x$nWorker[x$state01 == 1]) - mean(x$nWorker[x$state01 == 0])
+```
+
+### Simple regression: nWorker on time only
+
+```{r}
+# m1.2: nWorker on time only
+m1.2 <- lm(nWorker ~ time, data = x)
+summary(m1.2)
+```
+
+The time coefficient is the difference in means between before and after (collapsing states):
+
+```{r}
+m1.2$coefficients["time"]
+mean(x$nWorker[x$time == 1]) - mean(x$nWorker[x$time == 0])
+```
+
+### Multiple regression: nWorker on state + time
+
+```{r}
+# m2: nWorker on state + time (additive, no interaction)
+m2 <- lm(nWorker ~ state01 + time, data = x)
+summary(m2)
+```
+
+Note: m2 coefficients are partial effects (controlling for the other variable), so they don't correspond to simple differences in means anymore.
+
+### The full DiD model
+
+```{r}
+# m3.1: the full DiD model
+m3.1 <- lm(nWorker ~ state01 + time + interactionDummy, data = x)
+summary(m3.1)
+```
+
+## 1.5 The algebra: why the interaction IS the DiD
+
+The model we just estimated is:
+
+$$\text{nWorker} = \beta_0 + \beta_1 \cdot \text{state} + \beta_2 \cdot \text{time} + \beta_3 \cdot (\text{state} \times \text{time}) + \varepsilon$$
+
+The **baseline** is always the group where all dummies are zero — the **control state (PA) in the pre-period**. Every coefficient measures a change from this baseline:
+
+| Group      | state | time | E[nWorker]                                   |
+|------------|-------|------|----------------------------------------------|
+| PA, Before | 0     | 0    | $\beta_0$                                    |
+| PA, After  | 0     | 1    | $\beta_0 + \beta_2$                          |
+| NJ, Before | 1     | 0    | $\beta_0 + \beta_1$                          |
+| NJ, After  | 1     | 1    | $\beta_0 + \beta_1 + \beta_2 + \beta_3$     |
+
+Now compute the double difference:
+
+**Time change for NJ:** $(\beta_0 + \beta_1 + \beta_2 + \beta_3) - (\beta_0 + \beta_1) = \beta_2 + \beta_3$
+
+**Time change for PA:** $(\beta_0 + \beta_2) - \beta_0 = \beta_2$
+
+**Difference of the two time changes:** $(\beta_2 + \beta_3) - \beta_2 = \beta_3$
+
+So $\beta_3$ — the coefficient on the interaction — **IS** the difference-in-differences. It tells us: how much did NJ change *relative to what PA changed*? That is the causal treatment effect.
+
+Note: $\beta_1$ (the "state" coefficient) is NOT the treatment effect. It is just the **pre-existing gap** between NJ and PA before anything happened. And $\beta_2$ (the "time" coefficient) is NOT the overall time trend — it is the time change **only for the control group (PA)**.
+
+## 1.6 How DiD coefficients map to group means
+
+Let's verify with the actual data:
+
+```{r}
+mean_control_pre  <- mean(x$nWorker[x$state01 == 0 & x$time == 0])
+mean_control_post <- mean(x$nWorker[x$state01 == 0 & x$time == 1])
+mean_treat_pre    <- mean(x$nWorker[x$state01 == 1 & x$time == 0])
+mean_treat_post   <- mean(x$nWorker[x$state01 == 1 & x$time == 1])
+```
+
+**Intercept** ($\beta_0$) = mean of the baseline group (PA, Before):
+
+```{r}
+mean_control_pre
+m3.1$coefficients["(Intercept)"]
+```
+
+**State coefficient** ($\beta_1$) = pre-existing gap between NJ and PA:
+
+```{r}
+mean_treat_pre - mean_control_pre
+m3.1$coefficients["state01"]
+```
+
+**Time coefficient** ($\beta_2$) = time change for PA only:
+
+```{r}
+mean_control_post - mean_control_pre
+m3.1$coefficients["time"]
+```
+
+**Interaction coefficient** ($\beta_3$) = the DiD estimate (the causal treatment effect):
+
+```{r}
+(mean_treat_post - mean_treat_pre) - (mean_control_post - mean_control_pre)
+m3.1$coefficients["interactionDummy"]
+```
+
+The manual calculation and the regression coefficient are identical: about 2.94. NJ restaurants gained about 2.94 more full-time equivalent workers than PA restaurants after the minimum wage increase. This is the DiD — how much NJ changed *relative to what it would have changed anyway* (as approximated by PA's change).
+
+### Side: other ways to write the same model in R
+
+```{r}
+m3.2 <- lm(nWorker ~ state01 + time + state01*time, data = x)
+summary(m3.2)
+m3.3 <- lm(nWorker ~ state01*time, data = x)
+summary(m3.3)
+```
+
+All three specifications (m3.1, m3.2, m3.3) produce identical results. R's `*` operator automatically includes the main effects and the interaction.
+
+## 1.7 Comparing models side by side
+
+```{r}
+library(texreg)
+screenreg(list(m1.1, m2, m3.1), caption = "Minimum wage: DiD results",
+          caption.above = TRUE)
+```
+
+Let's interpret this table:
+
+- **Model 1** (nWorker ~ state): the state coefficient is -1.47, meaning NJ restaurants have on average 1.47 fewer workers than PA. But this collapses pre and post together.
+- **Model 2** (nWorker ~ state + time): the state coefficient stays -1.47 (because state and time are uncorrelated by design). The time coefficient is -0.13 — a small overall decline from before to after. Still no interaction.
+- **Model 3** (the full DiD): now look at how coefficients change. The state coefficient goes to **-2.94** — this is now only the pre-period gap (because the interaction handles what happens after). The time coefficient goes to **-2.49** — this is now only PA's time change. The interaction (**2.94**) is the DiD estimate.
+- **R-squared** is very low (< 0.01). This does NOT mean the result is wrong. R-squared measures how much variation our few variables explain. Most variation comes from restaurant-level differences we don't model. A real causal effect can exist with low R-squared.
+- Note that the interaction (DiD estimate) is **not statistically significant** in the full sample. The p-value is above 0.05. This means we cannot reject the null hypothesis of no effect at the 5% level. Keep this in mind as we look at subsamples.
+
+## 1.8 Robustness: by chain
+
+Why might chain composition matter? If NJ has mostly Burger Kings and PA has mostly other chains, and these chains have different employment levels, then a simple NJ-vs-PA comparison partly reflects chain differences rather than the policy effect. Let's check whether the proportion of Burger King restaurants differs across states:
+
+```{r}
+# how many BK vs non-BK in each state?
+x.nj <- x[x$state01 == 1 & x$time == 0, ]  # NJ, pre-period (avoid double-counting)
+x.pa <- x[x$state01 == 0 & x$time == 0, ]  # PA, pre-period
+
+# counts
+table(x.nj$bk)
+table(x.pa$bk)
+
+# proportions: divide counts by number of restaurants in each state
+table(x.nj$bk) / nrow(x.nj)
+table(x.pa$bk) / nrow(x.pa)
+```
+
+If the proportions are very different, chain composition is a confounder. If they are roughly similar, it is less of a concern. Here, the proportions are very close (about 41% BK in NJ vs 45% BK in PA), so chain composition is unlikely to be driving our results. Still, it is good practice to check robustness by running the DiD within each chain type separately:
+
+```{r}
+# Burger King only
+x.burgerKing <- x[x$bk == 1,]
+x.burgerKing$interactionDummy <- x.burgerKing$time * x.burgerKing$state01
+
+m4.bk <- lm(nWorker ~ state01 + time + interactionDummy, data = x.burgerKing)
+summary(m4.bk)
+```
+
+```{r}
+# Non-Burger King restaurants only
+x.notBK <- x[x$bk == 0,]
+x.notBK$interactionDummy <- x.notBK$time * x.notBK$state01
+
+m4.notBK <- lm(nWorker ~ state01 + time + interactionDummy, data = x.notBK)
+summary(m4.notBK)
+```
+
+```{r}
+screenreg(list(m3.1, m4.bk, m4.notBK),
+          custom.model.names = c("All restaurants", "Burger King", "Non-BK"),
+          caption = "DiD by chain type", caption.above = TRUE)
+```
+
+What to look for: mainly the **sign and significance** of the interaction term. If the DiD estimate is positive and significant for one chain type but not the other, that tells us the effect is concentrated in a particular type of restaurant. If the sign flipped, we would worry about the original result being driven by chain composition. The comparison also lets us see whether the change from the full-sample estimate (2.94) to the subsample estimates is large enough to be concerning.
+
+---
+
+# 2. Understanding Parallel Trends with Simulated Data
+
+## Knife Attacks in Vienna: Do Weapon Ban Zones Work?
+
+Knife crime in Austria has been rising sharply in recent years. Nationwide incidents went from 822 in 2020 to 2,596 in 2024 (a record high). Vienna alone accounted for over 1,000 knife attacks in 2024, and the 10th district — Favoriten — is a well-known hotspot.
+
+In March 2024, Vienna introduced a **Waffenverbotszone** (weapon ban zone) around Reumannplatz and Keplerplatz in Favoriten. This is a designated area where carrying knives, weapons, or dangerous objects is prohibited 24/7. Police can search clothing, bags, and cars on suspicion. Fines range from €1,000 for a first offence to €4,600 for repeat offenders.
+
+**The question:** did the weapon ban zone reduce knife attacks?
+
+**The challenge:** to use DiD, we need a control district that was on the **same trajectory** as Favoriten before the ban. We compare two potential controls:
+
+- **Meidling (12th district):** neighboring district, similar demographics, knife attacks rising at the **same rate** → good control (parallel trends hold)
+- **Innere Stadt (1st district):** tourist/business center, very different dynamics, knife attacks rising **much slower** → bad control (parallel trends violated)
+
+## 2.1 Simulating the data
+
+```{r}
+library(ggplot2)
+set.seed(42)
+
+years <- 2018:2026
+nYears <- length(years)
+trueEffect <- -30
+nObs <- 50  # observations per district per year (for proper standard errors)
+```
+
+Why 50 observations? If we had just one observation per district-year, we would have 4 data points and 4 parameters — zero degrees of freedom, and R gives NaN for all standard errors.
+
+### Favoriten (the district with the weapon ban zone)
+
+```{r}
+# starts at 80 attacks in 2018, rising by 15 per year
+# after the weapon ban zone in 2024, attacks drop by 30
+baseline.favoriten <- 80
+trend.favoriten <- 15
+
+x.favoriten <- data.frame(year = integer(), attacks = numeric(), district = character())
+for (i in 1:nYears) {
+  yearMean <- baseline.favoriten + trend.favoriten * (i - 1)
+  if (years[i] >= 2024) {
+    yearMean <- yearMean + trueEffect
+  }
+  obs <- yearMean + rnorm(nObs, mean = 0, sd = 8)
+  x.favoriten <- rbind(x.favoriten, data.frame(
+    year = years[i], attacks = obs, district = "Favoriten"
+  ))
+}
+```
+
+### Meidling (good control)
+
+```{r}
+# starts at 50 attacks, ALSO rising by 15 per year — same trend as Favoriten
+baseline.meidling <- 50
+trend.meidling <- 15
+
+x.meidling <- data.frame(year = integer(), attacks = numeric(), district = character())
+for (i in 1:nYears) {
+  yearMean <- baseline.meidling + trend.meidling * (i - 1)
+  obs <- yearMean + rnorm(nObs, mean = 0, sd = 8)
+  x.meidling <- rbind(x.meidling, data.frame(
+    year = years[i], attacks = obs, district = "Meidling"
+  ))
+}
+```
+
+### Innere Stadt (bad control)
+
+```{r}
+# starts at 20 attacks, rising by only 2 per year — much slower than Favoriten
+baseline.innerestadt <- 20
+trend.innerestadt <- 2
+
+x.innerestadt <- data.frame(year = integer(), attacks = numeric(), district = character())
+for (i in 1:nYears) {
+  yearMean <- baseline.innerestadt + trend.innerestadt * (i - 1)
+  obs <- yearMean + rnorm(nObs, mean = 0, sd = 8)
+  x.innerestadt <- rbind(x.innerestadt, data.frame(
+    year = years[i], attacks = obs, district = "Innere Stadt"
+  ))
+}
+```
+
+## 2.2 What parallel trends really means
+
+Parallel trends does NOT mean the two groups have the same level. It means they are **changing at the same rate** before the treatment. Favoriten can have more knife attacks than Meidling — that is fine. What matters is whether both are increasing by roughly the same amount each year.
+
+To check this, we need **multiple pre-treatment periods**. A before-and-after plot with just two time points tells you nothing about whether trends were parallel.
+
+```{r}
+# compute yearly means for each district
+meanByYear <- function(df, yrs) {
+  result <- c()
+  for (y in yrs) {
+    result <- c(result, mean(df$attacks[df$year == y]))
+  }
+  return(result)
+}
+
+x.means <- data.frame(
+  year     = rep(years, 3),
+  district = rep(c("Favoriten", "Meidling", "Innere Stadt"), each = nYears),
+  attacks  = c(meanByYear(x.favoriten, years),
+               meanByYear(x.meidling, years),
+               meanByYear(x.innerestadt, years))
+)
+```
+
+### Visual check: Favoriten vs Meidling
+
+```{r, fig.width=9, fig.height=5}
+x.goodTrends <- x.means[x.means$district != "Innere Stadt", ]
+
+ggplot(x.goodTrends, aes(x = year, y = attacks, col = district)) +
+  geom_point(size = 2) + geom_line(linewidth = 1) +
+  geom_vline(xintercept = 2024, linetype = "dashed", col = "black") +
+  annotate("text", x = 2024.2, y = max(x.goodTrends$attacks),
+           label = "Weapon ban zone", hjust = 0) +
+  labs(title = "Parallel Trends Check: Favoriten vs Meidling",
+       subtitle = "Both rise at ~15/year before 2024 (parallel trends HOLD)",
+       x = "Year", y = "Mean Knife Attacks per Year", col = "District") +
+  theme_bw()
+```
+
+Before 2024 the two lines rise at the same rate — the gap stays constant. After 2024, Favoriten drops sharply while Meidling keeps rising. The divergence is the treatment effect.
+
+### Visual check: Favoriten vs Innere Stadt
+
+```{r, fig.width=9, fig.height=5}
+x.badTrends <- x.means[x.means$district != "Meidling", ]
+
+ggplot(x.badTrends, aes(x = year, y = attacks, col = district)) +
+  geom_point(size = 2) + geom_line(linewidth = 1) +
+  geom_vline(xintercept = 2024, linetype = "dashed", col = "black") +
+  annotate("text", x = 2024.2, y = max(x.badTrends$attacks),
+           label = "Weapon ban zone", hjust = 0) +
+  labs(title = "Parallel Trends Check: Favoriten vs Innere Stadt",
+       subtitle = "Favoriten rises at ~15/year, Innere Stadt at ~2/year (parallel trends VIOLATED)",
+       x = "Year", y = "Mean Knife Attacks per Year", col = "District") +
+  theme_bw()
+```
+
+Before 2024 the lines are clearly diverging — the gap grows every year. Parallel trends does NOT hold.
+
+### Statistical test for parallel trends
+
+Visual inspection is the most common approach in applied research — many influential DiD papers, including the banks example in Angrist & Pischke's "Mastering 'Metrics" (based on Richardson & Troost 2009), rely primarily on visual evidence. But we can also supplement the visual check with a statistical test.
+
+The idea: if parallel trends hold, the **gap** between the two districts should stay constant over time before the treatment. If one district is rising faster than the other, the gap is growing — that's a violation.
+
+We can test this by regressing the outcome on year, a district dummy, and their **interaction** — using only pre-treatment data. Why does the interaction capture this? Think about it:
+
+- The `year` coefficient captures the overall time trend
+- The `district01` coefficient captures the level difference between districts
+- The `year:district01` interaction captures whether the **slope over time is different** for the two districts
+
+If the interaction is significant, it means one district is changing faster than the other — the trends are not parallel. If it is NOT significant, we cannot reject that the trends are the same.
+
+**Important caveat:** failing to reject parallel trends does NOT prove they hold (Roth 2022, Kahn-Lang & Lang 2020). The test may simply lack statistical power to detect a real difference. So a non-significant result is reassuring but not proof. The visual check and the statistical test together give us more confidence than either one alone.
+
+```{r}
+# combine Favoriten and Meidling, pre-treatment only
+x.preTrends.good <- rbind(
+  x.favoriten[x.favoriten$year < 2024, ],
+  x.meidling[x.meidling$year < 2024, ]
+)
+x.preTrends.good$district01 <- ifelse(x.preTrends.good$district == "Favoriten", 1, 0)
+
+# test: does the time trend differ between districts?
+# if the interaction (district × year) is NOT significant, trends are parallel
+trend.test.good <- lm(attacks ~ year + district01 + year:district01, data = x.preTrends.good)
+summary(trend.test.good)
+```
+
+The coefficient on `year:district01` tests whether Favoriten's yearly trend is different from Meidling's. If it is NOT significant (p > 0.05), we cannot reject parallel trends — good news for our DiD.
+
+```{r}
+# now the same test with Innere Stadt
+x.preTrends.bad <- rbind(
+  x.favoriten[x.favoriten$year < 2024, ],
+  x.innerestadt[x.innerestadt$year < 2024, ]
+)
+x.preTrends.bad$district01 <- ifelse(x.preTrends.bad$district == "Favoriten", 1, 0)
+
+trend.test.bad <- lm(attacks ~ year + district01 + year:district01, data = x.preTrends.bad)
+summary(trend.test.bad)
+```
+
+Here `year:district01` SHOULD be significant — confirming that the pre-trends are different and Innere Stadt is a bad control.
+
+## 2.3 DiD with the good control (Meidling)
+
+```{r}
+x.good <- rbind(
+  x.favoriten[x.favoriten$year %in% c(2023, 2024), ],
+  x.meidling[x.meidling$year %in% c(2023, 2024), ]
+)
+x.good$district01 <- ifelse(x.good$district == "Favoriten", 1, 0)
+x.good$time <- ifelse(x.good$year == 2024, 1, 0)
+x.good$interactionDummy <- x.good$district01 * x.good$time
+
+head(x.good)
+nrow(x.good)
+```
+
+DiD by hand:
+
+```{r}
+fav.before <- mean(x.favoriten$attacks[x.favoriten$year == 2023])
+fav.after  <- mean(x.favoriten$attacks[x.favoriten$year == 2024])
+mei.before <- mean(x.meidling$attacks[x.meidling$year == 2023])
+mei.after  <- mean(x.meidling$attacks[x.meidling$year == 2024])
+
+did.good <- (fav.after - fav.before) - (mei.after - mei.before)
+did.good
+```
+
+As a regression:
+
+```{r}
+m.good <- lm(attacks ~ district01 + time + interactionDummy, data = x.good)
+summary(m.good)
+```
+
+The interaction coefficient is close to -30 (the true effect), with proper standard errors and a significant p-value.
+
+## 2.4 DiD with the bad control (Innere Stadt)
+
+```{r}
+x.bad <- rbind(
+  x.favoriten[x.favoriten$year %in% c(2023, 2024), ],
+  x.innerestadt[x.innerestadt$year %in% c(2023, 2024), ]
+)
+x.bad$district01 <- ifelse(x.bad$district == "Favoriten", 1, 0)
+x.bad$time <- ifelse(x.bad$year == 2024, 1, 0)
+x.bad$interactionDummy <- x.bad$district01 * x.bad$time
+
+inn.before <- mean(x.innerestadt$attacks[x.innerestadt$year == 2023])
+inn.after  <- mean(x.innerestadt$attacks[x.innerestadt$year == 2024])
+
+did.bad <- (fav.after - fav.before) - (inn.after - inn.before)
+did.bad
+```
+
+```{r}
+m.bad <- lm(attacks ~ district01 + time + interactionDummy, data = x.bad)
+summary(m.bad)
+```
+
+The estimate is much more negative than -30 — biased because the control group was barely rising.
+
+## 2.5 Comparing the results
+
+```{r}
+trueEffect
+
+did.good
+m.good$coefficients["interactionDummy"]
+
+did.bad
+m.bad$coefficients["interactionDummy"]
+```
+
+Meidling gives an estimate close to -30 (the true effect). Innere Stadt overestimates the effect because it was rising at only 2/year while Favoriten was rising at 15/year. DiD subtracts the control's change from the treated's change — if the control barely changes, the DiD picks up the treatment effect PLUS the pre-existing difference in trends.
+
+---
+
+# 3. Panel Data TWFE: Alcohol Taxes and Traffic Fatalities
+
+Stock and Watson (based on Ruhm 1996) examine whether higher beer taxes reduce traffic fatalities across US states over time. This is a panel data setting where we can use **Two-Way Fixed Effects (TWFE)**.
+
+## 3.1 How is this different from Card & Krueger?
+
+In Card & Krueger, the setup was clean: NJ got a minimum wage increase, PA did not. One treated group, one control group, one before period, one after period. We built a `state × time` interaction and the coefficient on that was the DiD.
+
+The Fatalities data is completely different. There is **no single treatment event**. Beer tax is not a binary on/off policy — it is a continuous dollar amount that every state has, and each state sets its own level. Some states raise their beer tax in 1983, others in 1986, some never change it at all. The amounts differ too: one state might go from \$0.50 to \$0.80, another from \$0.30 to \$0.35.
+
+So this is NOT a "some states got treated and others didn't" story. It is: "every state has a beer tax, and we want to know whether states with higher beer taxes have fewer traffic deaths." The challenge is that states differ in many ways (rural vs urban, road quality, culture), so we cannot just compare high-tax states to low-tax states — that would be confounded.
+
+**Why fixed effects help:** State fixed effects remove everything that is constant within a state over time. What kinds of things are constant within a state? Think about it: Montana will always be rural with long empty highways. New York will always be dense and urban. Alabama will always have a different drinking culture than Utah. These are things that don't change (or change very slowly) and that affect both the beer tax a state sets AND its fatality rate. Without state fixed effects, we are comparing Montana to New York and attributing the difference to beer taxes — that's confounded. With state fixed effects, we are comparing Montana to itself across years: "when Montana's beer tax went up, did Montana's fatalities go down?"
+
+Year fixed effects remove anything that affects all states equally in a given year. For example: federal seatbelt laws passed in 1984 reduced fatalities everywhere. The 1982 recession reduced driving nationwide. Improvements in car safety technology (airbags, crumple zones) happened over time for everyone. Without year fixed effects, if beer taxes happened to rise during a period when cars were also getting safer, we'd incorrectly attribute the decline in fatalities to taxes rather than technology.
+
+**The cost of fixed effects: degrees of freedom.** Every fixed effect we add uses up one degree of freedom. But why? What does it actually mean to "use up" data?
+
+Think of it this way. We have 7 years of data for Montana. Without any fixed effects, all 7 observations help us figure out the relationship between beer tax and fatalities. But when we add a Montana fixed effect, we are telling the model: "estimate Montana's own average fatality rate." Computing that average uses up one of Montana's 7 observations' worth of information — now only 6 are left to tell us how Montana's fatalities move *around* that average when beer tax changes.
+
+Why? Because a mean is itself a piece of information that had to be learned from the data. Think of the simplest case: if you have just one number — Montana's fatality rate in 1982 is 3.2 — you can learn one thing from it: either Montana's average level, or how it responds to beer tax. Not both. One observation, one fact. Two observations let you estimate a mean and one slope. Three observations: a mean, a slope, and some uncertainty around that slope. Each parameter you estimate "claims" one observation's worth of information.
+
+Now scale this up. We have 48 states, and we add a dummy for each one. R drops one state as the reference category (its average goes into the intercept), so we estimate 47 dummy coefficients — that's 47 state-specific averages the model has to learn from the data. Each one claims one observation's worth of information. Same logic for the 7 years: R drops one year as the reference, giving us 6 year dummy coefficients — 6 more observations' worth of information spent on learning what 1983 looks like versus 1982, what 1984 looks like, and so on.
+
+So: 47 (state dummies) + 6 (year dummies) = 53 degrees of freedom consumed by the fixed effects, out of 336 total observations (48 × 7). After paying this cost, we have 336 − 54 = 282 degrees of freedom left for estimating the beer tax effect and other controls. That is still plenty.
+
+But what if we tried to add a dummy for every state-year combination? That would be 48 × 7 = 336 dummies — one for every single cell in the data. Each cell's average would need to be estimated, claiming every observation. Nothing would be left to estimate how beer tax relates to fatalities. The model would pass perfectly through every data point but would have no ability to measure anything useful.
+
+The rule of thumb: fixed effects are worth the degrees of freedom they cost because they remove important confounders. But you need enough data that after paying this cost, you still have enough degrees of freedom for precise estimates.
+
+**Why there is no interaction term:** In the 2×2 case, we needed the `state × time` interaction because `state` is constant over time (NJ is always NJ) and `time` is the same for everyone (everyone has the same before and after). The interaction was the only variable that varied both across states AND within states over time — so it was the only thing the fixed effects could work with.
+
+Here, `beertax` already varies both across states (California's tax ≠ Texas's tax) AND within states over time (California's tax in 1982 ≠ California's tax in 1988). So `beertax` naturally has the property that the interaction had in the 2×2 case. When we add state and year fixed effects, they strip away the between-state differences and the common time trends, leaving only: "in years when this specific state changed its beer tax differently from the national average, did its fatality rate change differently from the national average?"
+
+**Could we even create interaction terms?** With 48 states and 7 years, you would need 48 × 7 = 336 state-year interaction dummies — one for every single cell in the data. That would use up all your degrees of freedom and you could not estimate anything. There is no single "treatment" moment to isolate, so the interaction approach does not make sense here. Instead, `beertax` does the job directly as a continuous variable that varies within the panel.
+
+## 3.2 Loading and preparing the data
+
+```{r}
+library(AER)
+data(Fatalities)
+
+head(Fatalities)
+dim(Fatalities)
+
+Fatalities$fatal_rate <- Fatalities$fatal / Fatalities$pop * 10000
+
+head(Fatalities$fatal_rate)
+```
+
+## 3.3 Exploring the relationship
+
+```{r, fig.width=7, fig.height=5}
+Fatalities.1982 <- Fatalities[Fatalities$year == "1982", ]
+
+ggplot(Fatalities.1982, aes(x = beertax, y = fatal_rate)) +
+  geom_point(alpha = 0.5) + geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "Beer Tax vs Fatality Rate (1982)",
+       x = "Beer Tax", y = "Fatality Rate (per 10,000)") +
+  theme_bw()
+```
+
+```{r, fig.width=9, fig.height=6}
+ggplot(Fatalities, aes(x = beertax, y = fatal_rate, col = state)) +
+  geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) +
+  guides(col = "none") +
+  labs(title = "Beer Tax vs Fatality Rate by State",
+       x = "Beer Tax", y = "Fatality Rate (per 10,000)") +
+  theme_bw()
+```
+
+## 3.4 Exploring control variables
+
+### Minimum drinking age
+
+```{r, fig.width=7, fig.height=4}
+summary(Fatalities$drinkage)
+
+ggplot(Fatalities, aes(x = drinkage, y = fatal_rate)) +
+  geom_point(alpha = 0.5) + geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "Minimum Drinking Age vs Fatality Rate",
+       x = "Minimum Legal Drinking Age", y = "Fatality Rate (per 10,000)") +
+  theme_bw()
+```
+
+### Mandatory jail for DUI
+
+```{r, fig.width=7, fig.height=4}
+summary(Fatalities$jail)
+
+ggplot(Fatalities, aes(x = jail, y = fatal_rate)) +
+  geom_boxplot() +
+  labs(title = "Mandatory Jail for DUI vs Fatality Rate",
+       x = "Mandatory Jail Sentence", y = "Fatality Rate (per 10,000)") +
+  theme_bw()
+```
+
+### Miles driven (and why we use log)
+
+```{r, fig.width=7, fig.height=4}
+summary(Fatalities$miles)
+
+ggplot(Fatalities, aes(x = miles, y = fatal_rate)) +
+  geom_point(alpha = 0.5) + geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "Miles Driven vs Fatality Rate",
+       x = "Average Miles per Driver", y = "Fatality Rate (per 10,000)") +
+  theme_bw()
+```
+
+```{r, fig.width=9, fig.height=4}
+par(mfrow = c(1, 2))
+hist(Fatalities$miles, breaks = 30, main = "Distribution of Miles", xlab = "Miles")
+hist(log(Fatalities$miles), breaks = 30, main = "Distribution of log(Miles)", xlab = "log(Miles)")
+par(mfrow = c(1, 1))
+```
+
+```{r, fig.width=7, fig.height=4}
+ggplot(Fatalities, aes(x = log(miles), y = fatal_rate)) +
+  geom_point(alpha = 0.5) + geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "log(Miles) vs Fatality Rate",
+       x = "log(Average Miles per Driver)", y = "Fatality Rate (per 10,000)") +
+  theme_bw()
+```
+
+### Unemployment rate
+
+```{r, fig.width=7, fig.height=4}
+summary(Fatalities$unemp)
+
+ggplot(Fatalities, aes(x = unemp, y = fatal_rate)) +
+  geom_point(alpha = 0.5) + geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "Unemployment Rate vs Fatality Rate",
+       x = "Unemployment Rate", y = "Fatality Rate (per 10,000)") +
+  theme_bw()
+```
+
+### Income (and why we use log)
+
+```{r, fig.width=7, fig.height=4}
+summary(Fatalities$income)
+
+ggplot(Fatalities, aes(x = income, y = fatal_rate)) +
+  geom_point(alpha = 0.5) + geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "Income vs Fatality Rate",
+       x = "Per Capita Income", y = "Fatality Rate (per 10,000)") +
+  theme_bw()
+```
+
+Why log(income)? Income is right-skewed, and a \$1,000 increase means very different things at different levels. Going from \$10,000 to \$11,000 is a big deal, but \$100,000 to \$101,000 is not. Log captures this proportional thinking:
+
+```{r, fig.width=9, fig.height=4}
+par(mfrow = c(1, 2))
+hist(Fatalities$income, breaks = 30, main = "Distribution of Income", xlab = "Income")
+hist(log(Fatalities$income), breaks = 30, main = "Distribution of log(Income)", xlab = "log(Income)")
+par(mfrow = c(1, 1))
+```
+
+```{r, fig.width=7, fig.height=4}
+ggplot(Fatalities, aes(x = log(income), y = fatal_rate)) +
+  geom_point(alpha = 0.5) + geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "log(Income) vs Fatality Rate",
+       x = "log(Per Capita Income)", y = "Fatality Rate (per 10,000)") +
+  theme_bw()
+```
+
+## 3.5 Building TWFE manually with `lm()`
+
+### Model 1: simple OLS, no fixed effects
+
+```{r}
+mod1.manual <- lm(fatal_rate ~ beertax, data = Fatalities)
+summary(mod1.manual)
+```
+
+### Model 2: state fixed effects only
+
+```{r}
+length(unique(Fatalities$state))
+
+mod2.manual <- lm(fatal_rate ~ beertax + factor(state), data = Fatalities)
+mod2.manual$coefficients["beertax"]
+```
+
+### Model 3: state AND year fixed effects (TWFE)
+
+```{r}
+length(unique(Fatalities$year))
+
+mod3.manual <- lm(fatal_rate ~ beertax + factor(state) + factor(year), data = Fatalities)
+mod3.manual$coefficients["beertax"]
+```
+
+### Model 4: TWFE with additional controls
+
+```{r}
+mod4.manual <- lm(fatal_rate ~ beertax + drinkage + jail + miles + unemp + log(income)
+                   + factor(state) + factor(year), data = Fatalities)
+mod4.manual$coefficients["beertax"]
+```
+
+## 3.6 The easy way: `feols` from the `fixest` package
+
+```{r}
+# install.packages("fixest")
+library(fixest)
+
+mod1 <- feols(fatal_rate ~ beertax, data = Fatalities)
+mod2 <- feols(fatal_rate ~ beertax | state, data = Fatalities)
+mod3 <- feols(fatal_rate ~ beertax | state + year, data = Fatalities)
+mod4 <- feols(fatal_rate ~ beertax + drinkage + jail + miles + unemp + log(income)
+              | state + year, data = Fatalities)
+```
+
+Verify the coefficients match:
+
+```{r}
+mod1$coefficients["beertax"]
+mod1.manual$coefficients["beertax"]
+
+mod2$coefficients["beertax"]
+mod2.manual$coefficients["beertax"]
+
+mod3$coefficients["beertax"]
+mod3.manual$coefficients["beertax"]
+
+mod4$coefficients["beertax"]
+mod4.manual$coefficients["beertax"]
+```
+
+## 3.7 Results side by side
+
+```{r}
+screenreg(list(mod1, mod2, mod3, mod4), caption = "TWFE: Beer Tax and Fatality Rate",
+          caption.above = TRUE)
+```
+
+Let's interpret this table:
+
+- **Model 1** (no fixed effects): beer tax coefficient is **positive** (+0.36). This seems to say higher taxes mean MORE deaths — clearly wrong as a causal claim. States with high beer taxes also happen to have higher fatality rates for unrelated reasons (rural roads, culture, etc.). This is omitted variable bias.
+- **Model 2** (state fixed effects): the coefficient **flips to negative** (-0.66). This is the most important change. Now we compare each state to itself over time: when a state raised its tax, did fatalities fall? Yes. State fixed effects remove all time-invariant confounders. R-squared jumps dramatically because most variation is between states.
+- **Model 3** (state + year fixed effects = TWFE): the coefficient barely changes (-0.64). Adding year fixed effects controls for nationwide trends (safer cars, federal campaigns). The fact that the coefficient barely moved from Model 2 to Model 3 tells us that **common time trends were not seriously biasing Model 2**. This is good news — it means nationwide changes in fatality rates (which affect all states equally) were not confounding the beer tax estimate. If the coefficient had changed a lot from Model 2 to Model 3, we would worry that national trends were correlated with beer tax changes.
+- **Model 4** (TWFE + controls): the coefficient shrinks to -0.45. Some variation we attributed to beer taxes is now explained by drinking age, jail policies, miles, unemployment, and income. This is the most credible specification.
+
+**Key takeaway:** the sign flips from positive to negative once we add state fixed effects. Without them, you get the exact wrong answer. This is why fixed effects matter.
+
+## 3.8 Visualizing the coefficient estimates
+
+```{r, fig.width=8, fig.height=5}
+# install.packages("modelsummary")
+library(modelsummary)
+
+cm <- c('beertax' = 'Beer tax')
+modelplot(list("(1) No FE" = mod1,
+               "(2) State FE" = mod2,
+               "(3) State + Year FE" = mod3,
+               "(4) TWFE + Controls" = mod4),
+          coef_map = cm) +
+  geom_vline(xintercept = 0, linetype = "dashed", col = "gray50") +
+  labs(title = "Beer Tax Coefficient Across Model Specifications",
+       subtitle = "Dots = point estimates, lines = 95% confidence intervals",
+       x = "Coefficient on Beer Tax",
+       y = "Model") +
+  theme_bw()
+```
+
+Each row shows one model. The dot is the point estimate, the horizontal line is the 95% confidence interval. The dashed vertical line at zero means "no effect." Model 1 is positive (right of zero) — the wrong sign. Models 2–4 are all negative (left of zero), with overlapping intervals, confirming the estimate is stable once state fixed effects are included.

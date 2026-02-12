@@ -124,6 +124,7 @@ sumSquaredDev <- 0
 
 cat("Calculating squared deviations from mean:\n")
 for (i in 1:n) {
+  
   deviation <- age[i] - meanAge
   squaredDev <- deviation^2
   sumSquaredDev <- sumSquaredDev + squaredDev
@@ -131,6 +132,7 @@ for (i in 1:n) {
   cat("  age[", i, "] =", age[i],
       ", deviation =", age[i], "-", meanAge, "=", round(deviation, 2),
       ", squared =", round(squaredDev, 2), "\n")
+  
 }
 
 variance <- sumSquaredDev / (n - 1)  # Note: n-1 for sample variance

@@ -1,0 +1,8 @@
+exclude:
+  - "Session 1"
+  - "Session 1.5 (optional session)"
+  - "Session 2"
+  - "Session 2.5"
+  - "Session 3"
+  - "Session 4"
+  - "Exam"

@@ -3,7 +3,10 @@ Operational/
 .claude/
 textbook/
 quiz/private/
-
+CLAUDE.md
+DEVELOPMENT_GUIDE.md
+GITHUB_PAGES_INFO.md
+SESSION_LOG.md
 
 # R project files
 *.Rproj
@@ -42,6 +45,11 @@ Session\ 2.5/Rplots.pdf
 Session\ 2.5/SESSION_2.5_OVERVIEW.md
 
 Session\ 3/archive/
+
+Session\ 4/archive/
+Session\ 4/notes/
+Session\ 4/session_4_synthetic_control_cache/
+Session\ 4/session_4_synthetic_control_files/
 
 
 # General R files

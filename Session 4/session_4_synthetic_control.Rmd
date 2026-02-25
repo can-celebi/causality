@@ -1,0 +1,841 @@
+---
+title: "Session 4: The Synthetic Control Method"
+subtitle: "Economic Costs of German Reunification"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      fig.width = 8, fig.height = 5)
+```
+
+## Introduction
+
+When no single country is a good counterfactual for a treated country, SCM constructs a **synthetic** version as a weighted average of untreated donors --- matched on pre-treatment characteristics *and* outcome trajectory.
+
+**Case study:** Abadie, Diamond, and Hainmueller (2015) --- did German reunification (1990) hurt West Germany's economy?
+
+```{r packages}
+rm(list = ls())
+library(foreign)
+library(Synth)
+library(tidyverse)
+library(kableExtra)
+```
+
+## 1. The Data
+
+Original dataset from Abadie, Diamond, and Hainmueller (2015).
+
+```{r load-data}
+d <- read.dta("repgermany.dta")
+glimpse(d)
+```
+
+17 OECD countries (16 donors + West Germany), 1960--2003. West Germany (index = 7) is the treated unit.
+
+```{r column-structure}
+colnames(d)
+head(d, 3)
+```
+
+The first three columns define the panel structure:
+
+- **Column 1 (`index`)**: a numeric country ID. This is what the `Synth` package uses internally to identify units. West Germany is `index = 7`.
+- **Column 2 (`country`)**: the human-readable country name.
+- **Column 3 (`year`)**: the time period.
+
+When we call `dataprep()` later, we'll write `unit.variable = 1` and `time.variable = 3` --- those refer to **column positions** (1st and 3rd columns), not to the index values themselves. This is a common source of confusion.
+
+### Variable Definitions
+
+The dataset has 6 predictor variables plus the outcome (GDP). Here's what each one measures, where the data comes from, and what to watch out for.
+
+| Variable | What it measures | Source | Availability notes |
+|----------|-----------------|--------|--------------------|
+| `gdp` | GDP per capita (purchasing-power parity, constant 2002 USD) | Penn World Tables / OECD | Full 1960--2003 for all countries. This is both our **outcome** variable and one of the predictors. |
+| `trade` | Trade openness = (exports + imports) / GDP, as a percentage | World Bank WDI | Germany's series stops at **1990**: after reunification, trade statistics were merged for unified Germany, so separate West German figures aren't available. Donor countries continue to 2003. |
+| `infrate` | Annual inflation rate (% change in consumer price index, base year 1995) | OECD / World Bank | Germany's series stops at **1999**: the euro replaced the Deutsche Mark, so a separate German CPI becomes meaningless. Most donors continue to 2003. |
+| `industry` | Industry share of value added (% of GDP). "Value added" = revenue minus cost of intermediate inputs. | World Bank WDI | Sparse coverage before 1971. Germany has an **isolated 1960 data point**, then a gap, then 1970--1989. Most donors have 1971--2003. |
+| `schooling` | Percentage of population aged 25+ who attained secondary school (completed high school equivalent in the ISCED framework) | Barro--Lee educational attainment dataset | **Quinquennial** (every 5 years): 1960, 1965, 1970, ..., 2000. Germany has data from 1960--1990 (7 data points). The 1990 value is the last pre-reunification observation. |
+| `invest80` | Real domestic investment (private + public) as a share of real GDP | Penn World Tables | **Single 1980 cross-section** --- one number per country, not a time series. |
+
+We'll rename the abbreviated variable names to be more descriptive:
+
+```{r rename-variables}
+d <- d %>% rename(
+  tradeOpenness   = trade,
+  inflationRate   = infrate,
+  industryShare   = industry,
+  secondarySchool = schooling
+)
+```
+
+## 2. Explore the Variables
+
+Each plot shows all countries in grey with Germany in red. The dashed line marks reunification (1990).
+
+```{r plot-helper}
+plot_var <- function(data, var, title) {
+  ggplot(data %>% filter(!is.na(.data[[var]])),
+         aes(x = year, y = .data[[var]], group = country)) +
+    geom_line(color = "grey75", alpha = 0.6) +
+    geom_line(data = data %>% filter(country == "West Germany", !is.na(.data[[var]])),
+              color = "red", linewidth = 1.2) +
+    geom_vline(xintercept = 1990, linetype = "dashed", alpha = 0.4) +
+    labs(title = title, x = "Year", y = var) +
+    theme_minimal()
+}
+```
+
+**GDP per capita** is our outcome variable --- the thing we want to construct a counterfactual for. West Germany tracks near the top of the OECD pack before reunification. After 1990, the question is whether it would have continued on that trajectory, or whether it would have grown even faster without the economic shock of absorbing East Germany.
+
+```{r plot-gdp}
+plot_var(d, "gdp", "GDP per Capita (Outcome Variable)")
+```
+
+**Trade openness** measures how integrated a country's economy is with the rest of the world. Notice that Germany's red line **stops at 1990**: after reunification, the Statistisches Bundesamt (Federal Statistical Office) could no longer separate West German trade flows from unified Germany's. By contrast, GDP was reconstructed for the West German states post-reunification using regional accounts --- that's why the GDP red line continues but the trade line doesn't.
+
+```{r plot-trade}
+plot_var(d, "tradeOpenness", "Trade Openness (% of GDP)")
+```
+
+**Inflation rate** is the annual percentage change in consumer prices (CPI, base year 1995). Germany's series ends in **1999** because the euro replaced the Deutsche Mark. After that, there's a eurozone-wide CPI but no separate West German price index. Donor countries that kept their own currencies continue to 2003.
+
+```{r plot-infrate}
+plot_var(d, "inflationRate", "Inflation Rate (Annual % Change in CPI)")
+```
+
+**Industry share of value added** tells us what fraction of a country's economy comes from industry (manufacturing, mining, construction, utilities). "Value added" means revenue minus the cost of intermediate inputs --- it avoids double-counting. Notice the isolated 1960 data point for Germany (and some donors), then a gap before consistent annual coverage starts around 1970--71. This sparseness is typical of World Bank WDI data for earlier decades.
+
+```{r plot-industry}
+plot_var(d, "industryShare", "Industry Share of Value Added (% of GDP)")
+```
+
+**Secondary school attainment** comes from the Barro--Lee dataset, which is only available every 5 years (quinquennial). That's why the lines look like staircase steps rather than smooth curves. "Secondary school attainment" in the ISCED framework means completed high school equivalent --- not enrollment, but actual completion. Germany's series runs 1960--1990; the 1990 value is the last clean pre-reunification observation.
+
+```{r plot-schooling}
+plot_var(d, "secondarySchool", "Secondary School Attainment (% of Pop 25+)")
+```
+
+**Investment rate (~1980)** is a single cross-sectional snapshot: real domestic investment (private + public) as a share of real GDP, measured around 1980. This is not a time series --- each country has exactly one number. That's why we show it as a bar chart rather than a line plot.
+
+```{r plot-invest}
+d %>%
+  filter(!is.na(invest80)) %>%
+  distinct(country, invest80) %>%
+  mutate(is_germany = country == "West Germany") %>%
+  ggplot(aes(x = reorder(country, invest80), y = invest80, fill = is_germany)) +
+  geom_col(show.legend = FALSE) +
+  scale_fill_manual(values = c("TRUE" = "red", "FALSE" = "grey75")) +
+  coord_flip() +
+  labs(title = "Investment Rate (~1980)", x = NULL, y = "Investment Rate") +
+  theme_minimal()
+```
+
+## 3. Countries as Vectors
+
+The core idea: collapse each country's time series into a **single vector of predictor values**, then measure how similar each donor is to Germany.
+
+### Why Euclidean distance?
+
+We want a measure that captures **how different two countries are in absolute terms**. Euclidean distance does exactly this. In 2 dimensions, the distance between points $(a_1, a_2)$ and $(b_1, b_2)$ is:
+
+$$d = \sqrt{(a_1 - b_1)^2 + (a_2 - b_2)^2}$$
+
+For $k$ predictors, it generalizes to:
+
+$$d = \sqrt{\sum_{i=1}^{k} (a_i - b_i)^2}$$
+
+**Numeric example:** Suppose we only have two predictors: GDP (thousands) and inflation (%). Austria has (20, 3) and Japan has (18, 5). Their distance from Germany (22, 2) is:
+
+- Austria: $\sqrt{(22-20)^2 + (2-3)^2} = \sqrt{4 + 1} = 2.24$
+- Japan: $\sqrt{(22-18)^2 + (2-5)^2} = \sqrt{16 + 9} = 5.0$
+
+Austria is closer --- makes sense, it's more similar on both dimensions.
+
+**Critical:** we **standardize** (subtract mean, divide by standard deviation) before computing distances. Otherwise GDP (values in thousands) would dominate inflation (values in single digits), and inflation differences would be effectively invisible.
+
+To compute a single predictor vector per country, we need to collapse each country's time series into one number per variable. We do this by **averaging each predictor over 1981--1990** (the pre-treatment decade). Two exceptions: `invest80` is already a single 1980 value, and `secondarySchool` is only available every 5 years, so we average the 1980 and 1985 observations.
+
+```{r predictor-summary}
+pred_summary <- d %>%
+  filter(year %in% 1981:1990) %>%
+  group_by(country) %>%
+  summarise(gdp = mean(gdp, na.rm = TRUE),
+            tradeOpenness = mean(tradeOpenness, na.rm = TRUE),
+            inflationRate = mean(inflationRate, na.rm = TRUE),
+            industryShare = mean(industryShare, na.rm = TRUE),
+            .groups = "drop") %>%
+  left_join(d %>% filter(year == 1980) %>% select(country, invest80), by = "country") %>%
+  left_join(d %>% filter(year %in% c(1980, 1985)) %>% group_by(country) %>%
+              summarise(secondarySchool = mean(secondarySchool, na.rm = TRUE),
+                        .groups = "drop"),
+            by = "country")
+```
+
+Each country is now a point in 6-dimensional predictor space --- one number per predictor, 6 numbers per country. Let's see how far each donor is from Germany.
+
+We first convert the data frame to a numeric matrix (dropping the country name column), then **standardize** each predictor (subtract mean, divide by SD) so that all predictors are on the same scale. Then for each donor, we compute the Euclidean distance from Germany's standardized vector.
+
+```{r distance-plot, fig.height=5}
+# Convert to matrix, standardize, extract Germany's row
+pred_mat <- pred_summary %>% select(-country) %>% as.matrix()
+rownames(pred_mat) <- pred_summary$country
+pred_scaled <- scale(pred_mat)
+
+# Germany's standardized predictor vector
+germany_vec <- pred_scaled["West Germany", ]
+
+# For each donor (non-Germany row), compute Euclidean distance to Germany
+distances <- apply(pred_scaled[rownames(pred_scaled) != "West Germany", ], 1,
+                   function(x) sqrt(sum((x - germany_vec)^2)))
+
+data.frame(country = names(distances), distance = distances) %>%
+  ggplot(aes(x = reorder(country, -distance), y = distance,
+             fill = distance)) +
+  geom_col() +
+  scale_fill_gradient(low = "steelblue", high = "grey80") +
+  coord_flip() +
+  labs(title = "Euclidean Distance from West Germany in Predictor Space",
+       subtitle = "Closer = more similar to Germany on predictor characteristics",
+       x = NULL, y = "Distance (standardized predictors)") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+This gives us an overall "how similar" score, but it's a single number per country --- we can't see *which* predictors are driving the difference. For that, we need to look at each predictor separately.
+
+Now let's compare predictor profiles directly. We pick a few interesting countries (the top donors plus a couple of outliers) and for each predictor, compute the **percentage deviation from Germany's value**:
+
+$$\text{% difference} = 100 \times \frac{\text{country value} - \text{Germany value}}{\text{Germany value}}$$
+
+This way Germany always sits at 0%, and each bar shows how much higher or lower a country is relative to Germany on that specific predictor. We use percentage deviation (not raw differences or standardized values) because it's the most interpretable: "+50% on GDP" means "50% richer than Germany."
+
+We reshape the data from wide format (one column per predictor) to long format using `pivot_longer`, so we can facet by predictor.
+
+```{r predictor-profiles, fig.height=7, fig.width=9}
+# Pick a few countries to highlight (top donors + outliers)
+highlight <- c("West Germany", "Austria", "Switzerland", "USA", "Japan", "Greece")
+
+# Reshape: one row per country-predictor combination
+pred_long <- pred_summary %>%
+  filter(country %in% highlight) %>%
+  pivot_longer(-country, names_to = "predictor", values_to = "value")
+
+# Get Germany's value for each predictor as the reference point
+germany_vals <- pred_long %>% filter(country == "West Germany") %>%
+  select(predictor, germany_val = value)
+
+# Compute % deviation from Germany for each country-predictor pair
+pred_long %>%
+  left_join(germany_vals, by = "predictor") %>%
+  mutate(pct_diff = 100 * (value - germany_val) / germany_val) %>%
+  ggplot(aes(x = pct_diff, y = country, fill = country == "West Germany")) +
+  geom_col(show.legend = FALSE) +
+  geom_vline(xintercept = 0, linewidth = 0.5) +
+  scale_fill_manual(values = c("TRUE" = "red", "FALSE" = "steelblue")) +
+  facet_wrap(~ predictor, scales = "free_x", ncol = 3) +
+  labs(title = "How Far Is Each Country from Germany on Each Predictor?",
+       subtitle = "0% = identical to Germany. Bars = % deviation from Germany's value.",
+       x = "% difference from Germany", y = NULL) +
+  theme_minimal() +
+  theme(strip.text = element_text(face = "bold"))
+```
+
+### From vectors to matrices
+
+What we just computed --- a 6-number vector per country --- is exactly what SCM works with. In matrix notation:
+
+- Germany's vector is $X_1$ ($6 \times 1$): one column, 6 rows (one per predictor).
+- Stack all 16 donors side-by-side to get $X_0$ ($6 \times 16$): each column is one donor's predictor vector.
+- The goal: find weights $W$ ($16 \times 1$, one weight per donor, non-negative, summing to 1) such that $X_0 \cdot W \approx X_1$.
+
+In words: find a weighted average of the donor predictor vectors that approximates Germany's predictor vector. The country with the best match would get the highest weight.
+
+## 4. What `dataprep()` Produces: Four Matrices
+
+```{r dataprep}
+dataprep.out <- dataprep(
+  foo = d,
+  predictors = c("gdp", "tradeOpenness", "inflationRate"),
+  dependent = "gdp",
+  unit.variable = 1, time.variable = 3,
+  special.predictors = list(
+    list("industryShare",   1981:1990,    c("mean")),
+    list("secondarySchool", c(1980, 1985), c("mean")),
+    list("invest80",        1980,          c("mean"))
+  ),
+  treatment.identifier = 7,
+  controls.identifier = unique(d$index)[-7],
+  time.predictors.prior = 1981:1990,
+  time.optimize.ssr = 1960:1989,
+  unit.names.variable = 2,
+  time.plot = 1960:2003
+)
+```
+
+### Decoding the arguments
+
+The numeric arguments refer to **column positions** and **index values** --- and it's easy to mix them up:
+
+- `unit.variable = 1`: the unit identifier lives in **column 1** of the data frame (`index`). This is a *column position*.
+- `time.variable = 3`: the time variable lives in **column 3** (`year`). Also a *column position*.
+- `unit.names.variable = 2`: human-readable names are in **column 2** (`country`). Column position.
+- `treatment.identifier = 7`: West Germany has **index value** 7. This is a *data value*, not a column position.
+- `controls.identifier`: all other index values (1--17 except 7). Also *data values*.
+
+### The four matrices
+
+`dataprep()` does **no optimization** --- it organizes the raw panel into four matrices:
+
+| Matrix | What it contains | Built from | Dimensions |
+|--------|-----------------|-----------|------------|
+| $X_1$ | Germany's predictor values (averaged over `time.predictors.prior`) | Predictors + special predictors | $6 \times 1$ |
+| $X_0$ | Each donor's predictor values (same averaging) | Same predictors, all 16 donors | $6 \times 16$ |
+| $Z_1$ | Germany's GDP **year by year** over `time.optimize.ssr` | The outcome variable (GDP) | $30 \times 1$ |
+| $Z_0$ | Each donor's GDP **year by year** over the same window | The outcome, all 16 donors | $30 \times 16$ |
+
+The key difference: $X$ matrices collapse time into **one number per predictor** (an average). $Z$ matrices keep the **full time series** of the outcome. They serve completely different roles in the optimization.
+
+- $X_0, X_1$: used in the **inner** problem (match predictor profiles)
+- $Z_0, Z_1$: used in the **outer** problem (evaluate outcome fit)
+
+### The two-weighting intuition
+
+SCM finds two sets of weights simultaneously:
+
+1. **$W$ (country weights)**: how much each donor contributes to the synthetic. Chosen to match Germany's predictor profile ($X_0 W \approx X_1$).
+2. **$V$ (predictor importance)**: how much each predictor matters when computing the match quality. Chosen so the resulting $W$ also produces good year-by-year GDP tracking ($Z_0 W \approx Z_1$).
+
+The optimization alternates:
+
+1. **Start** with an initial guess for $V$ (e.g., uniform: all predictors equally important)
+2. **Inner step**: given this $V$, find the best $W$ --- the combination of donor countries that minimizes the weighted predictor mismatch $X_1 - X_0 W$ (matching the convex combination of donors' predictors to Germany's predictors)
+3. **Evaluate**: take the $W$ from step 2 and check how well it tracks Germany's GDP year-by-year: compute the average squared gap $Z_1 - Z_0 W$ across all 30 pre-treatment years
+4. **Outer step**: adjust $V$ to try to reduce the year-by-year tracking error from step 3
+5. **Repeat** steps 2--4: each new $V$ produces a different $W$, which produces a different tracking error, and the optimizer keeps adjusting $V$ until the tracking error stops improving
+
+### Why are the time windows different?
+
+- `time.predictors.prior = 1981:1990` --- average predictors over this decade
+- `time.optimize.ssr = 1960:1989` --- evaluate GDP tracking over these 30 years
+
+They serve **fundamentally different roles**. Predictors get collapsed into one number per variable; outcomes stay as full time series.
+
+**Why 1981--1990 for predictors?** The authors did a manual cross-validation: trained on 1971--80 predictor data, checked if the synthetic tracked GDP well in 1981--89. It did. Then they used 1981--1990 as the predictor window for the final estimation (most recent data = most relevant). This was a one-time sanity check, not a systematic search.
+
+### Special predictors
+
+"Special" just means **custom averaging window** per variable, driven by data availability:
+
+- `industryShare` over 1981--1990: annual data available
+- `secondarySchool` at 1980 & 1985 only: Barro--Lee data is quinquennial; 1990 contaminated by reunification
+- `invest80` at 1980 only: quinquennial data
+
+You can also use `"median"` instead of `"mean"`.
+
+```{r inspect-matrices}
+cat("X1 — Germany's predictor vector:\n")
+print(dataprep.out$X1)
+
+cat("\nX0 — Donor predictor matrix (first 3 countries):\n")
+print(dataprep.out$X0[, 1:3])
+
+cat("\nZ1 dims (outcome, pre-treatment):", dim(dataprep.out$Z1), "\n")
+cat("Z0 dims (donor outcomes, pre-treatment):", dim(dataprep.out$Z0), "\n")
+```
+
+## 5. The Nested Optimization
+
+`synth()` performs a **two-level nested optimization**. These two levels use **completely separate equations** with different data.
+
+### The inner problem: find $W$ given $V$
+
+$$\min_W \quad \underbrace{(X_1 - X_0 W)'}_{1 \times 6} \;\; \underbrace{V}_{6 \times 6} \;\; \underbrace{(X_1 - X_0 W)}_{6 \times 1} \quad \text{s.t.} \quad w_j \geq 0, \;\; \sum_j w_j = 1$$
+
+Uses $X_0$ ($6 \times 16$), $X_1$ ($6 \times 1$). Solved via constrained **quadratic programming (QP)** --- a type of optimization where the objective is quadratic and the constraints are linear. QPs have a **globally optimal** solution (no local minima), and are fast to solve. With only 16 variables (one weight per donor), this inner step is practically instant.
+
+**What $V$ does here:** $V$ is a $6 \times 6$ **diagonal** matrix. It sits inside a quadratic form: $(X_1 - X_0 W)' \; V \; (X_1 - X_0 W)$. When you expand this multiplication, each predictor's squared error gets multiplied by its corresponding diagonal entry of $V$:
+
+$$= V_1 \cdot (\text{gdp diff})^2 + V_2 \cdot (\text{trade diff})^2 + V_3 \cdot (\text{inflation diff})^2 + \ldots$$
+
+So $V$ literally **weights how much each predictor's mismatch matters**. If $V_1 = 0.89$ (GDP) and $V_2 = 0.001$ (trade), the optimizer will work very hard to match GDP and barely care about trade.
+
+### The outer problem: find the best $V$
+
+$$\text{MSPE}(V) = \frac{1}{T_0} \sum_{t=1}^{T_0} \big(\underbrace{Z_{1,t}}_{1 \times 1} - \underbrace{Z_{0,t\cdot}}_{1 \times 16} \;\; \underbrace{W^*_V}_{16 \times 1}\big)^2$$
+
+where $W^*_V$ means "the optimal $W$ for this particular $V$" --- it's the solution that came out of the inner problem.
+
+Uses $Z_0$ ($30 \times 16$), $Z_1$ ($30 \times 1$). Solved via **BFGS** (Broyden--Fletcher--Goldfarb--Shanno), a gradient-based optimizer. BFGS works by perturbing $V$ slightly and seeing how the tracking error changes (numerical gradient), then using that information to choose a better $V$. Unlike the inner QP, this problem isn't convex, so BFGS may find a local minimum. If the gradient is too noisy, the Synth package falls back to **Nelder--Mead**, a gradient-free method (slower but more robust).
+
+**MSPE** stands for **mean squared prediction error** --- it's just the average squared gap between actual and synthetic GDP over the pre-treatment period:
+
+$$\text{MSPE} = \frac{1}{30} \sum_{t=1960}^{1989} \big(\text{Germany GDP}_t - \text{Synthetic GDP}_t\big)^2$$
+
+Minimizing MSPE means: find a $V$ (and therefore a $W^*_V$) that makes the synthetic track Germany's GDP trajectory as closely as possible before reunification. If the pre-treatment fit is good, we trust the post-treatment divergence as a real treatment effect.
+
+**$V$ does NOT appear in the MSPE equation.** It enters only *indirectly*: a different $V$ produces a different $W^*_V$ from the inner problem, which in turn produces a different MSPE. The outer optimizer tries many values of $V$, and for each one, the inner problem solves for the best $W$. Then the outer evaluates how well that $W$ tracks GDP year-by-year.
+
+**Why $V$?** Without it, all predictors weighted equally. GDP (thousands) dominates inflation (single digits). $V$ lets the method learn which predictors matter for tracking the outcome.
+
+### Matrix dimensions summary
+
+Before we run the optimizer, let's be concrete about what goes in:
+
+| Object | Dimensions | Contents |
+|--------|-----------|----------|
+| $X_1$ | $6 \times 1$ | Germany's 6 predictor averages |
+| $X_0$ | $6 \times 16$ | 16 donors' predictor averages |
+| $Z_1$ | $30 \times 1$ | Germany's GDP, 1960--1989 (30 years) |
+| $Z_0$ | $30 \times 16$ | 16 donors' GDP, 1960--1989 |
+| $V$ | $6 \times 6$ | Diagonal matrix (6 free parameters) |
+| $W$ | $16 \times 1$ | Country weights (16 free parameters, must sum to 1) |
+
+```{r fit-synth}
+synth.out <- synth(data.prep.obj = dataprep.out, method = "BFGS")
+synth.tables <- synth.tab(dataprep.res = dataprep.out, synth.res = synth.out)
+```
+
+## 6. Results
+
+### Understanding the output objects
+
+The `synth()` function returns a list with several components:
+
+```{r inspect-output}
+cat("synth.out contains:\n")
+print(names(synth.out))
+
+cat("\nsynth.tables contains:\n")
+print(names(synth.tables))
+```
+
+- `synth.out$solution.w`: the $W$ vector ($16 \times 1$) --- the final country weights
+- `synth.out$solution.v`: the $V$ diagonal ($6 \times 1$) --- predictor importance weights
+- `synth.out$loss.w`: the inner loss (predictor mismatch) at the solution
+- `synth.out$loss.v`: the outer loss (MSPE) at the solution
+
+The convenience function `synth.tab()` produces formatted tables:
+
+- `tab.w`: country weights with names
+- `tab.pred`: predictor balance (treated vs synthetic vs donor average)
+- `tab.v`: $V$ weights
+
+### Country weights: who contributes to Synthetic Germany?
+
+```{r weights-plot, fig.height=5}
+w_df <- synth.tables$tab.w %>%
+  as.data.frame() %>%
+  mutate(label = paste0(unit.names, " (", unit.numbers, ")"))
+
+ggplot(w_df, aes(x = reorder(label, w.weights), y = w.weights,
+                 fill = w.weights > 0.05)) +
+  geom_col(show.legend = FALSE) +
+  scale_fill_manual(values = c("TRUE" = "steelblue", "FALSE" = "grey75")) +
+  coord_flip() +
+  labs(title = "Country Weights (W)",
+       subtitle = "Synthetic Germany = weighted average of these donors",
+       x = NULL, y = "Weight") +
+  theme_minimal()
+```
+
+### Predictor balance: how close is the match?
+
+Since predictors have very different scales, we show the **% difference** between treated and synthetic:
+
+```{r balance-plot, fig.height=4}
+bal <- synth.tables$tab.pred[, 1:2]
+bal_df <- data.frame(
+  predictor = rownames(bal),
+  treated = bal[, 1],
+  synthetic = bal[, 2]
+) %>%
+  mutate(pct_diff = 100 * (synthetic - treated) / treated)
+
+ggplot(bal_df, aes(x = reorder(predictor, abs(pct_diff)),
+                   y = pct_diff, fill = pct_diff > 0)) +
+  geom_col(show.legend = FALSE) +
+  geom_hline(yintercept = 0) +
+  scale_fill_manual(values = c("TRUE" = "steelblue", "FALSE" = "coral")) +
+  coord_flip() +
+  labs(title = "Predictor Balance: Synthetic vs Treated",
+       subtitle = "% difference from Germany's actual value. Closer to 0 = better match.",
+       x = NULL, y = "% difference") +
+  theme_minimal()
+```
+
+```{r balance-table}
+kbl(bal, digits = 1, caption = "Predictor Balance Table") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+No formal test for balance --- you eyeball it. Formal inference comes from placebo tests (Section 8).
+
+### Predictor importance ($V$)
+
+$V$ tells us which predictors the optimizer found most useful for tracking the outcome.
+
+```{r v-table}
+v_df <- data.frame(
+  predictor = rownames(dataprep.out$X1),
+  v_weight = round(as.numeric(synth.out$solution.v), 4)
+)
+kbl(v_df, caption = "Predictor Importance (V weights)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+GDP dominates ($V \approx 0.89$) because the outer loss function is about tracking GDP. The optimizer discovers that matching the GDP average (in the predictor window) is the single most predictive feature of GDP trajectory (in the outcome window). This makes intuitive sense: if a donor had similar GDP levels in 1981--1990, it was probably on a similar growth path in 1960--1989.
+
+$V$ was found by BFGS (or Nelder--Mead fallback if BFGS struggled). Since the outer problem isn't convex, different starting points could in principle yield different $V$ values. In practice, the solution is robust for this dataset.
+
+### Experiment: What if we force $V$ = (1, 0, 0, 0, 0, 0)?
+
+A natural question: why bother optimizing $V$? Why not just put all weight on GDP (the outcome) and ignore the other predictors? Let's try it by hand.
+
+We can't pass a custom $V$ directly to `synth()`, but we can simulate it: solve the inner QP with only GDP as a predictor (effectively $V_1 = 1$, everything else zero).
+
+```{r experiment-gdp-only, cache=TRUE}
+# dataprep with ONLY GDP as a predictor (no special predictors)
+dataprep_gdp_only <- dataprep(
+  foo = d,
+  predictors = "gdp",
+  dependent = "gdp",
+  unit.variable = 1, time.variable = 3,
+  treatment.identifier = 7,
+  controls.identifier = unique(d$index)[-7],
+  time.predictors.prior = 1981:1990,
+  time.optimize.ssr = 1960:1989,
+  unit.names.variable = 2,
+  time.plot = 1960:2003
+)
+synth_gdp_only <- synth(data.prep.obj = dataprep_gdp_only, method = "BFGS")
+synthetic_gdp_only <- dataprep_gdp_only$Y0plot %*% synth_gdp_only$solution.w
+```
+
+```{r experiment-compare-plot, fig.height=6}
+# Compute synthetic GDP from the main (optimized V) run for comparison
+synthetic_gdp <- dataprep.out$Y0plot %*% synth.out$solution.w
+
+exp_df <- data.frame(
+  year = rep(1960:2003, 3),
+  gdp = c(as.numeric(dataprep.out$Y1plot),
+          as.numeric(synthetic_gdp),
+          as.numeric(synthetic_gdp_only)),
+  type = rep(c("West Germany (actual)",
+               "Synthetic (optimized V)",
+               "Synthetic (GDP-only V)"), each = 44)
+)
+
+ggplot(exp_df, aes(x = year, y = gdp, color = type, linetype = type)) +
+  geom_line(linewidth = 1.1) +
+  geom_vline(xintercept = 1990, linetype = "dashed", color = "grey40") +
+  scale_color_manual(values = c("West Germany (actual)" = "red",
+                                "Synthetic (optimized V)" = "steelblue",
+                                "Synthetic (GDP-only V)" = "orange")) +
+  scale_linetype_manual(values = c("West Germany (actual)" = "solid",
+                                   "Synthetic (optimized V)" = "solid",
+                                   "Synthetic (GDP-only V)" = "dashed")) +
+  labs(title = "Does Optimizing V Actually Matter?",
+       subtitle = "GDP-only V vs full optimized V — compare pre-treatment tracking",
+       x = "Year", y = "GDP per capita (PPP, 2002 USD)",
+       color = NULL, linetype = NULL) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+```{r experiment-compare-mspe}
+# Pre-treatment MSPE for each approach
+pre_years <- 1:30  # 1960-1989
+mspe_optimized <- mean((as.numeric(dataprep.out$Y1plot[pre_years, ]) -
+                         as.numeric(synthetic_gdp[pre_years, ]))^2)
+mspe_gdp_only  <- mean((as.numeric(dataprep_gdp_only$Y1plot[pre_years, ]) -
+                         as.numeric(synthetic_gdp_only[pre_years, ]))^2)
+
+cat("Pre-treatment MSPE (optimized V):", round(mspe_optimized, 1), "\n")
+cat("Pre-treatment MSPE (GDP-only V): ", round(mspe_gdp_only, 1), "\n")
+cat("Ratio (GDP-only / optimized):    ", round(mspe_gdp_only / mspe_optimized, 2), "\n")
+
+# Compare country weights: GDP-only vs optimized V
+# Use country names from the main synth run
+country_lookup <- synth.tables$tab.w %>% as.data.frame()
+w_compare <- data.frame(
+  country = country_lookup$unit.names,
+  w_optimized = round(as.numeric(synth.out$solution.w), 3),
+  w_gdp_only  = round(as.numeric(synth_gdp_only$solution.w), 3)
+) %>%
+  filter(w_optimized > 0.01 | w_gdp_only > 0.01) %>%
+  arrange(desc(w_optimized))
+
+cat("\nCountry weights comparison (optimized V vs GDP-only):\n")
+print(w_compare)
+```
+
+The optimized $V$ achieves a lower MSPE because the other predictors carry information about *structural similarity* that GDP averages alone miss. Even though GDP gets $V \approx 0.89$, the remaining 11% of weight on trade, inflation, industry, schooling, and investment helps the optimizer pick a more structurally similar blend of donors --- which in turn tracks the GDP trajectory better.
+
+## 7. The Treatment Effect
+
+$V$ was a tool for finding $W$. Now that we have $W$, we apply it directly to the outcome data. $V$ doesn't appear in any final calculation.
+
+### Understanding Y0plot and Y1plot
+
+Before computing the gap, let's understand what data we're using. The `dataprep()` output contains additional matrices beyond $X$ and $Z$ that cover the full **plot range** (`time.plot = 1960:2003`, all 44 years):
+
+- `Y1plot` = treated outcome over the full plot range: $44 \times 1$ (Germany's GDP each year, 1960--2003)
+- `Y0plot` = donor outcomes over the full plot range: $44 \times 16$ (all donors' GDP each year)
+
+These are distinct from $Z_1$ and $Z_0$, which only cover the **optimization window** (`time.optimize.ssr = 1960:1989`, 30 years). The $Z$ matrices were used to *find* $W$; the $Y$ matrices are used to *apply* $W$ to the full time period, including the post-treatment years.
+
+`%*%` is **matrix multiplication** in R: $(44 \times 16) \times (16 \times 1) = (44 \times 1)$
+
+```{r compute-effect}
+synthetic_gdp <- dataprep.out$Y0plot %*% synth.out$solution.w
+
+gaps <- dataprep.out$Y1plot - synthetic_gdp
+gaps_df <- data.frame(
+  year = as.numeric(rownames(gaps)),
+  gap  = as.numeric(gaps)
+)
+```
+
+### Actual vs Synthetic GDP
+
+```{r path-plot}
+plot_df <- data.frame(
+  year = rep(1960:2003, 2),
+  gdp  = c(as.numeric(dataprep.out$Y1plot), as.numeric(synthetic_gdp)),
+  type = rep(c("West Germany", "Synthetic"), each = 44)
+)
+
+ggplot(plot_df, aes(x = year, y = gdp, color = type, linetype = type)) +
+  geom_line(linewidth = 1.1) +
+  geom_vline(xintercept = 1990, linetype = "dashed", color = "grey40") +
+  annotate("text", x = 1991, y = max(plot_df$gdp) * 0.6, label = "Reunification",
+           hjust = 0, fontface = "italic", color = "grey40") +
+  scale_color_manual(values = c("Synthetic" = "steelblue", "West Germany" = "red")) +
+  labs(title = "Actual vs Synthetic West Germany",
+       x = "Year", y = "GDP per capita (PPP, 2002 USD)", color = NULL, linetype = NULL) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+### The Gap = The Treatment Effect
+
+Unlike DiD (single $\beta$), SCM gives a treatment effect **for every post-treatment year**: $\hat{\tau}_t = Y_{1,t} - \sum_j w_j Y_{0j,t}$
+
+```{r gaps-plot}
+ggplot(gaps_df, aes(x = year, y = gap)) +
+  geom_area(data = filter(gaps_df, year >= 1990), fill = "red", alpha = 0.15) +
+  geom_line(linewidth = 1, color = "darkred") +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_vline(xintercept = 1990, linetype = "dashed", color = "grey40") +
+  labs(title = "Estimated Effect of Reunification on West German GDP",
+       subtitle = "Shaded area = cost of reunification",
+       x = "Year", y = "GDP Gap (per capita, USD)") +
+  theme_minimal()
+```
+
+```{r effect-size}
+post_gaps <- filter(gaps_df, year >= 1990)
+pre_gdp_avg <- mean(as.numeric(
+  dataprep.out$Y1plot[as.numeric(rownames(dataprep.out$Y1plot)) < 1990, ]))
+
+cat("Average post-treatment gap:", round(mean(post_gaps$gap), 1), "USD per capita\n")
+cat("Gap in 2003 (end of sample):", round(post_gaps$gap[post_gaps$year == 2003], 1),
+    "USD per capita\n")
+cat("Average gap as % of pre-treatment GDP:",
+    round(100 * mean(post_gaps$gap) / pre_gdp_avg, 1), "%\n")
+```
+
+## 8. Optional: Placebo Studies
+
+SCM has no standard errors or p-values. Abadie et al. (2015) use two types of **placebo studies** to evaluate the credibility of the results. The logic: if our method produces a large effect estimate even when there is no real treatment, then we shouldn't trust it.
+
+### Placebo 1: In-time placebo (reassign treatment to 1975)
+
+The first check: what if we pretend reunification happened in 1975 instead of 1990? We rerun the model with 1975 as the treatment year, lagging the predictor windows accordingly. If the synthetic control has predictive power, we should see a good fit from 1960 to 1975, and **no divergence** between 1975 and 1990 (because nothing actually happened in 1975). A large placebo gap during 1975--1990 would undermine our confidence that the post-1990 gap reflects reunification rather than poor model fit.
+
+```{r placebo-intime, cache=TRUE}
+# In-time placebo: pretend reunification happened in 1975
+# Lag predictor window to 1966-1975, optimization window to 1960-1974
+dataprep_1975 <- dataprep(
+  foo = d,
+  predictors = c("gdp", "tradeOpenness", "inflationRate"),
+  dependent = "gdp",
+  unit.variable = 1, time.variable = 3,
+  special.predictors = list(
+    list("industryShare",   1971:1975,    c("mean")),
+    list("secondarySchool", c(1965, 1970), c("mean")),
+    list("invest80",        1980,          c("mean"))
+  ),
+  treatment.identifier = 7,
+  controls.identifier = unique(d$index)[-7],
+  time.predictors.prior = 1966:1975,
+  time.optimize.ssr = 1960:1974,
+  unit.names.variable = 2,
+  time.plot = 1960:1990
+)
+synth_1975 <- synth(data.prep.obj = dataprep_1975, method = "BFGS")
+
+synthetic_gdp_1975 <- dataprep_1975$Y0plot %*% synth_1975$solution.w
+```
+
+```{r placebo-intime-plot, fig.height=5}
+intime_df <- data.frame(
+  year = rep(1960:1990, 2),
+  gdp  = c(as.numeric(dataprep_1975$Y1plot),
+           as.numeric(synthetic_gdp_1975)),
+  type = rep(c("West Germany", "Synthetic (placebo 1975)"), each = 31)
+)
+
+ggplot(intime_df, aes(x = year, y = gdp, color = type, linetype = type)) +
+  geom_line(linewidth = 1.1) +
+  geom_vline(xintercept = 1975, linetype = "dashed", color = "grey40") +
+  annotate("text", x = 1976, y = min(intime_df$gdp) * 1.05,
+           label = "Placebo\nreunification", hjust = 0, fontface = "italic",
+           color = "grey40", size = 3.5) +
+  scale_color_manual(values = c("Synthetic (placebo 1975)" = "steelblue",
+                                "West Germany" = "red")) +
+  labs(title = "In-Time Placebo: Fake Reunification in 1975",
+       x = "Year", y = "GDP per capita (PPP, 2002 USD)",
+       color = NULL, linetype = NULL) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+```{r placebo-intime-gaps}
+actual_1975 <- as.numeric(dataprep_1975$Y1plot)
+synth_1975_vals <- as.numeric(synthetic_gdp_1975)
+gap_1975 <- actual_1975 - synth_1975_vals
+years_1975 <- 1960:1990
+
+cat("Pre-1975 avg gap:", round(mean(gap_1975[1:15]), 1), "\n")
+cat("Post-1975 avg gap:", round(mean(gap_1975[16:31]), 1), "\n")
+cat("Gap in 1980:", round(gap_1975[years_1975 == 1980], 1), "\n")
+cat("Gap in 1985:", round(gap_1975[years_1975 == 1985], 1), "\n")
+cat("Gap in 1990:", round(gap_1975[years_1975 == 1990], 1), "\n")
+```
+
+The synthetic tracks reasonably well from 1960 to 1975 (pre-placebo gaps around ±70 USD), but after 1975 the two trajectories **diverge**: the synthetic consistently undershoots actual West Germany, and the gap grows to over 2000 USD by 1990.
+
+**What does this tell us?** The in-time placebo doesn't pass cleanly. The model trained on only 15 years of data (1960--1974) doesn't have enough information to track Germany's trajectory out of sample. Compare this to the main model, which uses 30 years (1960--1989) for the optimization window — twice the data — and produces a much tighter pre-treatment fit.
+
+This is an important lesson: **the training window matters**. With a short window, the synthetic drifts. With a longer window, it locks on. The paper reports a clean in-time placebo (their Figure 4), likely because they tuned the predictor windows more carefully or used a slightly different specification. The point for us is that the *choice* of training window shapes the story you can tell — a shorter window makes the method look less reliable, a longer window makes it look better. This is a researcher degree of freedom that you should be aware of.
+
+### Placebo 2: In-space placebos (reassign treatment to other countries)
+
+The second check: reassign the treatment to each donor country. We run the exact same SCM procedure pretending each donor was "treated" in 1990, constructing a synthetic version from the remaining donors (always excluding Germany). This gives us a distribution of placebo effects. If Germany's effect is unusually large relative to this distribution, we take it as evidence that the effect is real.
+
+```{r placebo-run, cache=TRUE}
+all_gaps <- list()
+donor_ids <- unique(d$index)[unique(d$index) != 7]
+country_names <- d %>% distinct(index, country) %>% deframe()
+
+for (id in donor_ids) {
+  tryCatch({
+    dp <- dataprep(
+      foo = d,
+      predictors = c("gdp", "tradeOpenness", "inflationRate"),
+      dependent = "gdp",
+      unit.variable = 1, time.variable = 3,
+      special.predictors = list(
+        list("industryShare",   1981:1990,    c("mean")),
+        list("secondarySchool", c(1980, 1985), c("mean")),
+        list("invest80",        1980,          c("mean"))
+      ),
+      treatment.identifier = id,
+      controls.identifier = setdiff(unique(d$index), c(id, 7)),
+      time.predictors.prior = 1981:1990,
+      time.optimize.ssr = 1960:1989,
+      unit.names.variable = 2,
+      time.plot = 1960:2003
+    )
+    so <- synth(data.prep.obj = dp, method = "BFGS")
+    g <- as.numeric(dp$Y1plot - (dp$Y0plot %*% so$solution.w))
+    all_gaps[[country_names[as.character(id)]]] <- g
+  }, error = function(e) {
+    cat("Skipping", country_names[as.character(id)], ":", e$message, "\n")
+  })
+}
+
+# Add Germany's actual gap
+all_gaps[["West Germany"]] <- as.numeric(gaps)
+```
+
+```{r placebo-gap-plot, fig.height=6}
+placebo_df <- bind_rows(
+  lapply(names(all_gaps), function(nm) {
+    data.frame(country = nm, year = 1960:2003, gap = all_gaps[[nm]])
+  })
+)
+
+ggplot(placebo_df, aes(x = year, y = gap, group = country)) +
+  geom_line(data = filter(placebo_df, country != "West Germany"),
+            color = "grey75", alpha = 0.5) +
+  geom_line(data = filter(placebo_df, country == "West Germany"),
+            color = "red", linewidth = 1.2) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_vline(xintercept = 1990, linetype = "dashed", color = "grey40") +
+  labs(title = "In-Space Placebo: Germany (Red) vs All Donor Countries (Grey)",
+       x = "Year", y = "GDP Gap (per capita)") +
+  theme_minimal()
+```
+
+Some placebo countries show large gaps, but that alone doesn't mean much. A large post-1990 gap is not informative if the synthetic control couldn't track the country well even *before* 1990. To account for this, Abadie et al. compute the ratio of post-reunification RMSPE to pre-reunification RMSPE for each country.
+
+**RMSPE (Root Mean Squared Prediction Error)** measures the size of the gap:
+
+$$\text{RMSPE} = \sqrt{\frac{1}{T} \sum_{t} (\text{gap}_t)^2}$$
+
+By taking the ratio $\text{RMSPE}_{\text{post}} / \text{RMSPE}_{\text{pre}}$, we avoid having to discard countries with poor pre-treatment fit. A country with a large post-treatment gap *and* a large pre-treatment gap will have a modest ratio. A country with a large post-treatment gap but small pre-treatment gap --- like Germany --- will have a high ratio.
+
+```{r placebo-diagnostics}
+gap_diagnostics <- data.frame(
+  country = names(all_gaps),
+  pre_rmspe  = sapply(all_gaps, function(g) sqrt(mean(g[1:30]^2))),
+  post_rmspe = sapply(all_gaps, function(g) sqrt(mean(g[31:44]^2))),
+  avg_post_gap = sapply(all_gaps, function(g) mean(g[31:44]))
+) %>%
+  mutate(is_germany = country == "West Germany") %>%
+  arrange(avg_post_gap)
+
+kbl(gap_diagnostics %>% select(-is_germany),
+    digits = 1,
+    col.names = c("Country", "Pre-RMSPE", "Post-RMSPE", "Avg Post-1990 Gap"),
+    caption = "Placebo diagnostics for each country") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) %>%
+  row_spec(which(gap_diagnostics$is_germany), bold = TRUE, color = "red")
+```
+
+```{r rmspe-ratio, fig.height=5}
+rmspe_df <- data.frame(
+  country = names(all_gaps),
+  pre_rmspe = sapply(all_gaps, function(g) sqrt(mean(g[1:30]^2))),
+  post_rmspe = sapply(all_gaps, function(g) sqrt(mean(g[31:44]^2)))
+) %>%
+  mutate(ratio = post_rmspe / pre_rmspe,
+         is_germany = country == "West Germany") %>%
+  arrange(desc(ratio))
+
+ggplot(rmspe_df, aes(x = reorder(country, ratio), y = ratio, fill = is_germany)) +
+  geom_col(show.legend = FALSE) +
+  scale_fill_manual(values = c("TRUE" = "red", "FALSE" = "grey75")) +
+  coord_flip() +
+  labs(title = "Ratio of Post-Reunification RMSPE to Pre-Reunification RMSPE",
+       subtitle = "West Germany and control countries (cf. Figure 5 in Abadie et al. 2015)",
+       x = NULL, y = "Post-period RMSPE / Pre-period RMSPE") +
+  theme_minimal()
+
+germany_rank <- which(rmspe_df$country == "West Germany")
+p_value <- germany_rank / nrow(rmspe_df)
+cat("Germany's RMSPE ratio rank:", germany_rank, "out of", nrow(rmspe_df), "\n")
+cat("Pseudo p-value:", round(p_value, 4), "\n")
+```
+
+West Germany has the highest RMSPE ratio: the post-reunification gap is about 16 times larger than the pre-reunification gap. If one were to pick a country at random from the sample, the probability of obtaining a ratio as large as West Germany's is $1/17 \approx 0.059$.

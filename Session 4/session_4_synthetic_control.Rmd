@@ -676,7 +676,7 @@ dataprep_1975 <- dataprep(
   ),
   treatment.identifier = 7,
   controls.identifier = unique(d$index)[-7],
-  time.predictors.prior = 1966:1975,
+  time.predictors.prior = 1966:1974,
   time.optimize.ssr = 1960:1974,
   unit.names.variable = 2,
   time.plot = 1960:1990
@@ -833,9 +833,7 @@ ggplot(rmspe_df, aes(x = reorder(country, ratio), y = ratio, fill = is_germany))
   theme_minimal()
 
 germany_rank <- which(rmspe_df$country == "West Germany")
-p_value <- germany_rank / nrow(rmspe_df)
 cat("Germany's RMSPE ratio rank:", germany_rank, "out of", nrow(rmspe_df), "\n")
-cat("Pseudo p-value:", round(p_value, 4), "\n")
 ```
 
 West Germany has the highest RMSPE ratio: the post-reunification gap is about 16 times larger than the pre-reunification gap. If one were to pick a country at random from the sample, the probability of obtaining a ratio as large as West Germany's is $1/17 \approx 0.059$.

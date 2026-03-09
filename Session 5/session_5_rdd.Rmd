@@ -430,36 +430,27 @@ The optimal bandwidth balances these two forces. This is exactly what `rdrobust`
 rd_sim <- rdrobust(sim_nl$Y, sim_nl$X, c = 0)
 ```
 
-Let's unpack what `rdrobust` reports:
+Let's unpack what `rdrobust` does, step by step:
 
 ```{r sim-rdrobust-explain}
-# Extract the key outputs
-cat("=== What rdrobust does ===\n\n")
-cat("1. BANDWIDTH SELECTION\n")
-cat("   Estimation bandwidth (h):", round(rd_sim$bws[1, 1], 3), "\n")
-cat("   This is the window: only observations within ±",
-    round(rd_sim$bws[1, 1], 3), "of the cutoff are used.\n")
-cat("   Effective observations: ", rd_sim$N_h[1], "(left) +",
-    rd_sim$N_h[2], "(right) =", sum(rd_sim$N_h), "out of", n, "\n\n")
+rdrobust_summary <- data.frame(
+  Field = c("Estimation BW (h)",
+            "Effective obs.",
+            "Method",
+            "Estimate"),
+  Value = c(paste0("±", round(rd_sim$bws[1, 1], 3), " around cutoff"),
+            paste0(rd_sim$N_h[1], " (left) + ", rd_sim$N_h[2],
+                   " (right) = ", sum(rd_sim$N_h), " out of ", n),
+            "Local linear (p = 1) on each side",
+            paste0(round(rd_sim$coef[1], 2), "  (true effect = ", tau, ")"))
+)
 
-cat("2. ESTIMATION\n")
-cat("   Method: local LINEAR regression (order p = 1) on each side\n")
-cat("   Estimate of treatment effect:", round(rd_sim$coef[1], 2), "\n")
-cat("   True effect:", tau, "\n\n")
-
-cat("3. INFERENCE (bias-corrected)\n")
-cat("   Bias bandwidth (b):", round(rd_sim$bws[2, 1], 3),
-    "— a wider window used to ESTIMATE the bias\n")
-cat("   The package uses a quadratic (order q = 2) on this wider window\n")
-cat("   to estimate how much bias the linear fit introduces,\n")
-cat("   then subtracts that bias from the estimate.\n")
-cat("   Bias-corrected estimate:", round(rd_sim$coef[2], 2), "\n")
-cat("   Robust 95% CI: [", round(rd_sim$ci[3, 1], 2), ",",
-    round(rd_sim$ci[3, 2], 2), "]\n")
-cat("   Robust p-value:", round(rd_sim$pv[3], 4), "\n")
+kable(rdrobust_summary, col.names = c("Field", "Value"),
+      caption = "What rdrobust does") |>
+  kable_styling(bootstrap_options = "striped", full_width = FALSE)
 ```
 
-In short: `rdrobust` does exactly what we did manually --- fit a linear regression in a window around the cutoff --- but it (1) chooses the bandwidth optimally by minimizing mean squared error (bias² + variance), and (2) corrects for the remaining bias using a wider window with a higher-order polynomial. The fundamental logic is identical to what we built from scratch.
+The logic is identical to what we built from scratch: fit a linear regression in a window around the cutoff, but with an optimally chosen bandwidth. The output also reports bias-corrected inference (the "Robust" column) --- we'll explain what that means in detail when we use `rdrobust` on real data in the next section.
 
 ---
 
@@ -471,9 +462,13 @@ Now let's apply RDD to real data. The **Minimum Legal Drinking Age** (MLDA) is o
 
 In the US, the legal drinking age is 21. The day you turn 21, you can legally buy alcohol. **Carpenter & Dobkin (2009)** asked: does legal access to alcohol increase mortality?
 
+<details>
+<summary>**Why was this paper important?** (Background)</summary>
+
 This was a more open question than it sounds. Before this paper, a large body of research had exploited *historical variation* in state-level drinking ages during the 1970s-80s (when US states experimented with ages of 18, 19, and 20 before federal legislation in 1984 pushed all states to 21). Those studies almost exclusively looked at motor vehicle fatalities. A 2002 review of all published drinking age studies between 1960 and 1999 found only **six** that examined any cause of death other than traffic accidents --- and those reached contradictory conclusions.
 
 The prior studies also suffered from a serious endogeneity problem: states that lowered their drinking age were arguably different from those that didn't, in ways related to youth drinking culture. Carpenter & Dobkin's key innovation was to use the **current, uniform** age-21 threshold with an RDD design, sidestepping this problem entirely.
+</details>
 
 The running variable is **age** (measured in fine cells, roughly 2-month intervals). The cutoff is **21**. Treatment is legal access to alcohol. This is a **sharp** RDD: everyone below 21 is denied legal access, everyone at or above 21 gets it.
 
@@ -489,9 +484,15 @@ cat("\nColumns:", ncol(mlda), "\n")
 cat("Rows:", nrow(mlda), "\n")
 ```
 
-The data has 50 age cells (not individual-level data) spanning ages 19--23. Each row is one age cell with death rates per 100,000 person-years. The column names are cryptic --- and notice there are paired columns: `all` and `allfitted`, `internal` and `internalfitted`, etc. The "fitted" columns contain smoothed values from the original paper's regression; we'll drop those and work with the raw rates.
+**Important**: This is **not** individual-level data. The data has 50 age cells spanning ages 19--23. Each row is one age cell (roughly a 2-month bin), and the values are **average death rates per 100,000 person-years** for everyone in that age bin. So when we see `allCauses = 93.8` for an age cell, that's the average all-cause mortality rate across millions of people in that age range.
+
+The column names are cryptic --- and notice there are paired columns: `all` and `allfitted`, `internal` and `internalfitted`, etc. The "fitted" columns contain smoothed values from the original paper's regression; we'll drop those and work with the raw rates.
+
+<details>
+<summary>**Data source** (Background)</summary>
 
 The data comes from the **National Center for Health Statistics** (NCHS) mortality detail files, 1997--2004 --- essentially *every death certificate* in the United States. The authors obtained a confidential version with exact date of birth and date of death, allowing them to compute age at death in days. The population denominators for computing rates come from census population estimates by single year of age.
+</details>
 
 ```{r mlda-rename}
 # Keep only the raw (non-fitted) columns and rename for clarity
@@ -512,10 +513,12 @@ head(mlda, 3)
 
 ### Variable Definitions
 
+Each value below is the **average rate per 100,000 person-years** within that age cell --- not an individual count.
+
 | Variable | What it measures | Should it jump at 21? |
 |----------|-----------------|----------------------|
-| `age` | Age in years (running variable, fine cells of ~2 months) | --- |
-| `allCauses` | All-cause mortality rate per 100,000 | **Yes** (if alcohol kills) |
+| `age` | Midpoint of the age cell (running variable, ~2-month bins) | --- |
+| `allCauses` | All-cause mortality rate | **Yes** (if alcohol kills) |
 | `external` | External causes (accidents, violence, poisoning) | **Yes** |
 | `internal` | Internal causes (diseases, organ failure) | **No** (disease doesn't know your birthday) |
 | `mva` | Motor vehicle accidents | **Yes** (drunk driving) |
@@ -537,11 +540,12 @@ death_vars <- c("allCauses", "internal", "external", "mva",
                 "alcoholRelated", "suicide", "homicide", "drugs")
 for (v in death_vars) {
   cat(sprintf("%-15s  min: %6.2f  max: %6.2f  mean: %6.2f\n",
-              v, min(mlda[[v]]), max(mlda[[v]]), mean(mlda[[v]])))
+              v, min(mlda[[v]], na.rm = TRUE), max(mlda[[v]], na.rm = TRUE),
+              mean(mlda[[v]], na.rm = TRUE)))
 }
 ```
 
-Notice the scale differences: all-cause mortality is around 90--100, while alcohol-related deaths are below 1. Internal causes (~17) are much lower than external causes (~75). MVA (~35) is the single largest cause of death in this age group.
+Notice the scale differences: all-cause mortality averages about 96 per 100,000, while alcohol-related deaths average only about 1.3. External causes (~75) dominate internal causes (~20). MVA (~32) and homicide (~17) are the largest single external causes. Suicide (~12) is also substantial. Drug-related deaths (~4) are relatively low in this age group.
 
 Let's visualize each cause of death around the cutoff:
 
@@ -556,7 +560,7 @@ for (v in death_vars) {
 }
 ```
 
-Even in these simple base-R scatter plots, you can already see which causes jump at 21 (allCauses, external, mva, alcoholRelated) and which don't (internal, homicide). Suicide and drugs are harder to read by eye --- we'll test them formally later.
+Even in these simple plots, you can already see which causes jump at 21 (allCauses, external, mva, alcoholRelated) and which don't (internal, homicide). Suicide and drugs are harder to read by eye --- we'll test them formally later.
 
 ### 2.3 See the Jump
 
@@ -578,9 +582,9 @@ ggplot(mlda, aes(x = age, y = allCauses)) +
 
 There's a visible **jump** at 21. People just over 21 die at higher rates than people just under 21, despite being almost identical in every other way.
 
-### 2.3 Manual Estimate with lm()
+### 2.4 Manual Estimate with lm()
 
-Let's estimate this the "old-fashioned" way before using any packages:
+Let's estimate this the "old-fashioned" way before using any packages. We'll use **all 48 age cells** (no bandwidth restriction) and **center the running variable at the cutoff** (age 21) so that the intercept and treatment coefficient have clean interpretations:
 
 ```{r mlda-manual}
 # Step 1: Center the running variable at the cutoff
@@ -594,11 +598,13 @@ m_mlda <- lm(allCauses ~ age_centered + over21, data = mlda)
 summary(m_mlda)
 ```
 
-The coefficient on `over21` is our RDD estimate: the jump in the death rate at age 21. This is the **causal effect** of legal access to alcohol on mortality (under RDD assumptions).
+The coefficient on `over21` is our RDD estimate: **7.66 additional deaths per 100,000** at the age-21 cutoff. This is the causal effect of legal access to alcohol on mortality (under RDD assumptions). The intercept (91.84) is the predicted death rate just below the cutoff, and the age slope (-0.97) captures the background downward trend in mortality as people age through this range.
 
 Why do we center the running variable? It makes the intercept interpretable --- it becomes the predicted death rate for someone just below the cutoff. And the `over21` coefficient is the jump at exactly age 21, not at age 0.
 
-### 2.4 Allow Different Slopes on Each Side
+Note that we used **all 48 age cells** in this regression --- no bandwidth restriction. We'll see shortly why that matters.
+
+### 2.5 Allow Different Slopes on Each Side
 
 There's no reason the relationship between age and mortality should have the same slope below and above 21. Alcohol access could change the age-mortality gradient. Let's allow that:
 
@@ -607,7 +613,9 @@ m_mlda_int <- lm(allCauses ~ age_centered * over21, data = mlda)
 summary(m_mlda_int)
 ```
 
-The interaction term `age_centered:over21` captures whether the slope changes at the cutoff. Compare the estimates:
+The interaction term `age_centered:over21` is statistically significant (p = 0.003), meaning the slope **does** change at 21: mortality is rising slightly below the cutoff (slope = 0.83, not significant) but falling steeply above it (slope = 0.83 - 3.60 = -2.77). This makes sense --- the initial spike in alcohol-related deaths fades as people settle into legal drinking.
+
+But look at the treatment coefficient: `over21` is still **7.66**, exactly the same as the same-slope model. This is because we centered the running variable at the cutoff --- the interaction changes the slopes on each side but doesn't affect the estimated jump at the cutoff point itself. The SE drops from 1.44 to 1.32 because allowing different slopes gives a better fit (less residual variance), which tightens our standard errors. Compare:
 
 ```{r mlda-compare-manual}
 compare_manual <- data.frame(
@@ -622,7 +630,7 @@ kable(compare_manual,
   kable_styling(bootstrap_options = "striped", full_width = FALSE)
 ```
 
-### 2.5 Enter rdrobust
+### 2.6 Enter rdrobust
 
 Now let's see what `rdrobust` does --- and more importantly, **why** it does things differently.
 
@@ -631,11 +639,39 @@ rd_mlda <- rdrobust(y = mlda$allCauses, x = mlda$age, c = 21)
 summary(rd_mlda)
 ```
 
-Key things to notice:
+Let's walk through every field in the output:
 
-1. **Bandwidth**: `rdrobust` chose its own bandwidth (look at "BW est.") rather than using all the data. It selects the bandwidth that minimizes mean squared error.
-2. **Bias correction**: The "Robust" row gives bias-corrected estimates and confidence intervals. This accounts for the fact that the optimal bandwidth for point estimation isn't optimal for inference.
-3. **Local polynomial order**: By default, `rdrobust` uses local linear regression (order 1), similar to our `lm()` with `age_centered + over21`.
+**Header section:**
+
+| Field | Value | Meaning |
+|-------|-------|---------|
+| **Sharp RD** | (automatic) | `rdrobust` defaults to **sharp** RDD (treatment switches perfectly at cutoff). For fuzzy RDD (where crossing the cutoff only changes the *probability* of treatment), you'd pass an additional argument: `fuzzy = treatment_variable`. We didn't, so it assumes sharp. |
+| **BW type: mserd** | mserd | Bandwidth selection method. "MSE" = minimize mean squared error (balancing bias and variance). "rd" = use the **same** bandwidth on both sides of the cutoff. Other options exist (e.g., `bwselect = "msetwo"` for different bandwidths on each side). |
+| **Kernel: Triangular** | Triangular | How observations are **weighted** based on distance from cutoff. A triangular kernel gives the most weight to observations right at the cutoff, linearly decreasing to zero weight at the bandwidth edge. Observations outside the bandwidth get zero weight. This is like saying "I trust nearby observations more than distant ones." Alternative: uniform kernel (equal weight within bandwidth). |
+| **VCE method: NN** | NN | Variance-covariance estimation method. "NN" = **nearest neighbor**, which estimates the variance at each point using the variance among its closest neighbors. This is robust to heteroskedasticity (different variance at different ages). |
+
+**Sample breakdown:**
+
+| Field | Left | Right | Meaning |
+|-------|------|-------|---------|
+| **Number of Obs.** | 24 | 24 | We started with 50 rows, but 2 have NAs, leaving 48 usable. Of these, 24 age cells are below 21 and 24 are at or above 21. |
+| **Eff. Number of Obs.** | 6 | 6 | **Effective** observations: only 6 age cells on each side fall within the bandwidth. These are the observations actually used for estimation. Compare to our manual `lm()` which used all 48! |
+| **Order est. (p)** | 1 | 1 | The **polynomial order** for the point estimate. $p = 1$ means **local linear** regression --- fit a straight line on each side of the cutoff, within the bandwidth. This is the same model as our `lm()` with `age_centered + over21`. If you wanted local quadratic, you'd set `p = 2`. |
+| **Order bias (q)** | 2 | 2 | The polynomial order for **bias estimation**. $q = 2$ means it fits a **local quadratic** on a wider window. Why? Within the estimation bandwidth, we fit a straight line to something that's actually curved. That straight-line approximation always introduces some error --- that's the bias. To estimate how large that bias is, we need to know the **curvature**, which requires fitting a higher-order polynomial. Always $q = p + 1$ by default. |
+| **BW est. (h)** | 0.493 | 0.493 | The **estimation bandwidth**, in the units of the running variable --- here, **years**. `rdrobust` will only use age cells within $21 \pm 0.493$, i.e., roughly ages 20.5 to 21.5. This is the MSE-optimal bandwidth: narrow enough to keep bias low, wide enough to have enough data for a reasonable estimate. |
+| **BW bias (b)** | 0.780 | 0.780 | The **bias bandwidth** --- a wider window ($21 \pm 0.780$) used to estimate the curvature that the linear fit missed. It needs to be wider than $h$ because estimating curvature reliably requires more data than the narrow estimation window provides. The quadratic fit on this wider window captures what the linear fit got wrong, and the difference is the estimated bias. |
+| **rho (h/b)** | 0.632 | 0.632 | Simply $h / b = 0.493 / 0.780 = 0.632$. This ratio captures how much narrower the estimation window is compared to the bias window. Not something you need to interpret --- it's just a summary. |
+| **Unique Obs.** | 24 | 24 | Number of unique values of the running variable on each side. Same as Number of Obs. here because each age cell has a unique age value. In individual-level data with many ties, this could differ. |
+
+**Results table:**
+
+The results have two parts in one row:
+
+- **Point Estimate (9.595)**: This is the conventional RDD estimate --- the jump at the cutoff from the local linear regression within the bandwidth. It's higher than our manual estimate of 7.66 because the manual estimate used all the data (ages 19--23), including observations far from the cutoff that pull the estimate toward the overall trend. The rdrobust estimate, using only data near 21, captures the pure local jump.
+
+- **Robust Inference (z = 2.205, p = 0.027, CI [1.077, 18.300])**: The column header in the output says "Robust Inference" --- this means the z-statistic, p-value, and confidence interval have been **bias-corrected**. The point estimate (9.595) comes from a linear fit within bandwidth $h$, which is slightly biased because the true relationship is curved. The package uses the quadratic fit on the wider window $b$ to estimate and subtract that bias, then constructs CIs that account for this correction. "Robust" means the inference is honest about the bias inherent in the bandwidth choice. The CI is wide ([1.08, 18.30]) because we're working with only 12 effective observations --- that's the price of being truly local.
+
+So in short: `rdrobust` does exactly what we did manually --- fit a linear regression near the cutoff --- but it (1) chooses the bandwidth optimally, (2) weights observations by distance from the cutoff, and (3) corrects for the remaining bias using a higher-order polynomial on a wider window.
 
 How does `rdrobust` compare to our manual estimate?
 
@@ -665,7 +701,7 @@ kable(compare_all, caption = "All Estimates Compared") |>
 
 All three methods tell a similar story: turning 21 increases the death rate by roughly 7--10 deaths per 100,000. Carpenter & Dobkin report this as approximately a **9% increase in overall mortality** --- a striking number for what is essentially a change in legal status.
 
-### 2.6 Falsification: What Should NOT Jump?
+### 2.7 Falsification: What Should NOT Jump?
 
 A good RDD demands falsification tests. If turning 21 increases mortality **because of alcohol**, then:
 
@@ -737,10 +773,6 @@ kable(falsification,
 
 The pattern is exactly what the alcohol mechanism predicts. Alcohol-related and MVA deaths jump significantly at 21. Internal causes do not. Interestingly, **homicide does not jump either** --- even though lab studies show alcohol increases aggression, the legal drinking age doesn't appear to cause more murders. Carpenter & Dobkin suggest the alcohol-fueled harm in this age group manifests primarily through self-harm (suicide) and accidents, not violence toward others.
 
-One more important finding from the paper that isn't visible in this data: the mortality effect is **not driven by new drinkers**. Lifetime drinking participation barely changes at 21 --- most people have already tried alcohol. Instead, existing drinkers drink on **more days** once it's legal and convenient. They don't drink *more per occasion*; they just drink *more often*.
-
-> **Your Turn**: Run `rdrobust` on `drugs` separately. Does it jump at 21? Should it? What does this tell you about the mechanisms?
-
 ---
 
 ## 3. Brazil Elections --- RDD with `rdrobust`
@@ -763,13 +795,17 @@ Their explanation centers on three features of Brazilian democracy:
 
 They test this with an RDD: compare municipalities where the incumbent party **barely won** vs. **barely lost** an election. Since who wins a razor-thin election is essentially random, any difference in future performance must be *caused* by winning (and therefore holding office).
 
-**Running variable**: margin of victory at election $t$ (vote share of incumbent party minus runner-up). Positive = incumbent party barely won; negative = barely lost.
+To be precise about the setup: the **incumbent party** is the party that currently holds the mayor's office --- i.e., the party that won the *previous* election. We observe how this party performs in the *current* election ($t$), and then track how it does in the *next* election ($t+1$).
 
-**Cutoff**: 0 (the election threshold).
+**Running variable**: margin of victory at election $t$, in **percentage points** (incumbent party's vote share minus the runner-up's). The range is -100 to +100. A value of +5 means the incumbent party won by 5 percentage points; -5 means they lost by 5 points. A value of -100 would mean they were completely wiped out; +100 would mean they ran essentially unopposed.
 
-**Treatment**: the incumbent party won the election (and therefore holds office going into the next election).
+**Cutoff**: 0 (the election threshold --- positive margin = won, negative = lost).
+
+**Treatment**: the incumbent party won election $t$ and therefore holds office going into election $t+1$.
 
 **Outcome**: margin of victory at election $t+1$. Does barely winning at $t$ help or hurt at $t+1$?
+
+The data covers **five election cycles** (2000, 2004, 2008, 2012, plus the 1996 baseline). Brazilian municipal elections happen every 4 years. The same municipality can appear in **multiple election pairs** --- for example, the 2000→2004 pair and the 2004→2008 pair. Each row in the dataset is one municipality-election pair.
 
 ```{r brazil-load}
 brazil <- read.csv("CTV_2020_Sage.csv")
@@ -793,33 +829,28 @@ head(brazil, 3)
 
 ### Variable Definitions
 
+The dataset includes several covariates (party indicators, population, GDP), but for the RDD we only need the running variable, the outcome, and one covariate for a falsification check.
+
 | Variable | Original name | What it measures |
 |----------|--------------|-----------------|
 | `margin_t` | `mv_incparty` | **Running variable**: incumbent party's margin of victory at election $t$ (percentage points). Positive = won, negative = lost. |
 | `margin_t1` | `mv_incpartyfor1` | **Outcome**: incumbent party's margin of victory at election $t+1$. |
-| `effectiveParties` | `numpar_candidates_eff` | Effective number of parties/candidates in the election |
-| `wonPT_lag` | `party_PT_wonlag1_b1` | Did the Workers' Party (PT) win the *previous* election? (1 = yes) |
-| `wonPMDB_lag` | `party_PMDB_wonlag1_b1` | Did PMDB win the previous election? |
-| `wonDEM_lag` | `party_DEM_wonlag1_b1` | Did DEM (formerly PFL) win the previous election? |
-| `wonPSDB_lag` | `party_PSDB_wonlag1_b1` | Did PSDB win the previous election? |
-| `population` | `population` | Municipality population |
-| `gdpPerCapita` | `pibpc` | GDP per capita of the municipality |
-
-The party abbreviations: **PT** = Workers' Party (Lula's party, the one disciplined party in Brazil); **PMDB** = Brazilian Democratic Movement Party (largest centrist party); **DEM** = Democrats (conservative); **PSDB** = Brazilian Social Democracy Party (center-right, Cardoso's party).
+| `gdpPerCapita` | `pibpc` | GDP per capita of the municipality (used for covariate balance check) |
 
 ### Explore the Data
 
 ```{r brazil-missingness}
 cat("Total observations:", nrow(brazil), "\n\n")
-cat("Non-missing counts:\n")
-for (v in names(brazil)) {
+cat("Non-missing counts for key variables:\n")
+key_vars <- c("margin_t", "margin_t1", "gdpPerCapita")
+for (v in key_vars) {
   cat(sprintf("  %-18s  %6d  (%4.1f%%)\n",
               v, sum(!is.na(brazil[[v]])),
               100 * sum(!is.na(brazil[[v]])) / nrow(brazil)))
 }
 ```
 
-There's a lot of missingness --- many rows have only `effectiveParties` and `population`. The analysis-ready subset (where we have both the running variable and the outcome) is much smaller:
+There's a lot of missingness. The running variable and outcome are only available for about half the rows. The analysis-ready subset (where we have both) is much smaller:
 
 ```{r brazil-clean}
 brazil_clean <- brazil[!is.na(brazil$margin_t) & !is.na(brazil$margin_t1), ]
@@ -828,8 +859,8 @@ cat("Analysis sample (complete running variable + outcome):", nrow(brazil_clean)
 
 The data covers **Brazilian municipal elections from 1996--2012** (five election cycles), obtained from Brazil's *Tribunal Superior Eleitoral* (Superior Electoral Court). Brazil has over 5,500 municipalities, and the analysis focuses on those with plurality elections (excluding cities over 200,000 voters that use a runoff system).
 
-```{r brazil-explore-plots, fig.height=8}
-par(mfrow = c(2, 2), mar = c(4, 4, 3, 1))
+```{r brazil-explore-plots, fig.height=4}
+par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))
 
 # Running variable distribution
 hist(brazil_clean$margin_t, breaks = 50, col = "steelblue", border = "white",
@@ -842,32 +873,18 @@ hist(brazil_clean$margin_t1, breaks = 50, col = "steelblue", border = "white",
      main = "Outcome: Margin at t+1",
      xlab = "Margin of Victory (pp)")
 abline(v = 0, col = "firebrick", lwd = 2, lty = 2)
-
-# Effective number of parties
-brazil_eff <- brazil_clean[!is.na(brazil_clean$effectiveParties), ]
-hist(brazil_eff$effectiveParties, breaks = 30, col = "steelblue", border = "white",
-     main = "Effective Number of Parties",
-     xlab = "N Effective Parties")
-
-# Population (log scale)
-brazil_pop <- brazil_clean[!is.na(brazil_clean$population), ]
-hist(log10(brazil_pop$population), breaks = 30, col = "steelblue", border = "white",
-     main = "Municipality Population (log10)",
-     xlab = "log10(Population)")
 ```
 
-Key observations:
+The **running variable** is roughly symmetric around zero --- close elections are common. The median margin of victory is only about 11 percentage points. About a quarter of races are decided by 5 points or less. This is very different from US elections, where incumbents typically win by wide margins.
 
-- The **running variable** is roughly symmetric around zero --- close elections are common. The median margin of victory is only about 11 percentage points. About a quarter of races are decided by 5 points or less. This is very different from US elections, where incumbents typically win by wide margins.
-- Most municipalities are **small** --- the median population is in the low thousands. These are towns, not megacities.
-- Elections typically feature 2--4 effective parties.
+For the rest of this section, we'll use `X` for the running variable and `Y` for the outcome --- the standard notation for RDD:
 
 ```{r brazil-vars}
 X <- brazil_clean$margin_t      # running variable: margin at t
 Y <- brazil_clean$margin_t1     # outcome: margin at t+1
 
-cat("Running variable range:", round(range(X), 2), "\n")
-cat("Outcome range:", round(range(Y), 2), "\n")
+cat("Running variable (X) range:", round(range(X), 2), "\n")
+cat("Outcome (Y) range:", round(range(Y), 2), "\n")
 cat("Median absolute margin:", round(median(abs(X)), 2), "pp\n")
 ```
 
@@ -894,16 +911,16 @@ An important note on **external validity**: you might worry that close elections
 
 ### 3.3 Falsification: Is Anyone Manipulating the Cutoff?
 
-The key RDD assumption is that no one can **precisely manipulate** their position relative to the cutoff. In elections, this means parties can't engineer razor-thin victories. If they could, the units just above and below the cutoff wouldn't be comparable.
+The key RDD assumption is that no one can **precisely manipulate** their position relative to the cutoff. What would that look like here?
 
-We test this with a **density test**: is there a suspicious bunching of observations just above (or below) the cutoff?
+Remember that our running variable is defined from the **incumbent party's perspective**: positive means the incumbent won, negative means the incumbent lost. If incumbents could manipulate close elections --- through vote buying, ballot stuffing, pressuring local officials --- they would push themselves from just below zero to just above zero. We'd see an asymmetry: more municipalities with a margin of +0.5 than -0.5, more at +1 than -1, and so on. The histogram of margins would have a **bump** just above zero and a **dip** just below.
 
-```{r brazil-density}
+This doesn't require checking party by party. Whether the incumbent is PT, PMDB, or any other party, the running variable is always "their margin." If incumbents *as a class* have an edge in close elections, the density of the running variable will be discontinuous at zero.
+
+The `rddensity` function tests exactly this. It estimates the density (the histogram shape) of the running variable on each side of the cutoff separately, then asks: do the two sides meet **smoothly** at zero, or is there a gap?
+
+```{r brazil-density, results='hide', fig.keep='last'}
 dens_test <- rddensity(X)
-summary(dens_test)
-```
-
-```{r brazil-density-plot}
 rdplotdensity(dens_test, X,
               plotRange = c(-50, 50),
               title = "Density of Running Variable Around Cutoff",
@@ -911,11 +928,44 @@ rdplotdensity(dens_test, X,
               ylabel = "Density")
 ```
 
-If the p-value is large, we **fail to reject** the null of no manipulation. The density is smooth through the cutoff --- no evidence of sorting.
+The plot shows the estimated density on each side of the cutoff (smooth curves) with confidence intervals (shaded bands). If there were manipulation, the right side would be visibly higher than the left side at the cutoff. Here, the two sides meet smoothly --- no bump, no dip.
+
+The formal test confirms this: $T = -0.004$, $p = 0.997$ --- essentially zero evidence of manipulation. Incumbents are not systematically engineering close wins.
+
+But this is the pooled test across **all** incumbent parties. What if one specific party is better at rigging close elections than others? Let's check each of the four major parties separately. The party lag variables in the dataset tell us which party was the incumbent, so we can subset:
+
+```{r brazil-density-by-party}
+parties <- c("wonPT_lag", "wonPMDB_lag", "wonDEM_lag", "wonPSDB_lag")
+party_names <- c("PT", "PMDB", "DEM", "PSDB")
+
+density_results <- data.frame(
+  Party = character(0), N = numeric(0),
+  T_stat = numeric(0), P_value = numeric(0)
+)
+
+for (i in 1:length(parties)) {
+  sub <- brazil_clean[brazil_clean[[parties[i]]] == 1 &
+                        !is.na(brazil_clean[[parties[i]]]), ]
+  dt <- rddensity(sub$margin_t)
+  density_results <- rbind(density_results, data.frame(
+    Party   = party_names[i],
+    N       = nrow(sub),
+    T_stat  = round(dt$test$t_jk, 3),
+    P_value = round(dt$test$p_jk, 3)
+  ))
+}
+
+names(density_results) <- c("Incumbent Party", "N", "T-statistic", "p-value")
+kable(density_results,
+      caption = "Density Test by Incumbent Party") |>
+  kable_styling(bootstrap_options = "striped", full_width = FALSE)
+```
+
+No party shows evidence of manipulation --- all p-values are far above 0.05. PT has the fewest observations (422) and PMDB the most (1680), but regardless of sample size, the density is smooth through the cutoff for every party. No one is rigging close elections.
 
 ### 3.4 Falsification: Covariate Balance
 
-Another check: pre-determined covariates should NOT jump at the cutoff. GDP per capita was determined before the election, so it shouldn't change discontinuously at the threshold.
+Another check: **pre-determined covariates should NOT jump at the cutoff**. GDP per capita reflects the economic conditions of a municipality *before* the election outcome was decided. If barely-winning municipalities have systematically different GDP than barely-losing ones, that would suggest the two groups aren't comparable --- maybe richer municipalities somehow produce closer wins, or the "randomization" near the cutoff is broken.
 
 ```{r brazil-covariate}
 brazil_gdp <- brazil_clean[!is.na(brazil_clean$gdpPerCapita), ]
@@ -924,20 +974,29 @@ rd_gdp <- rdrobust(y = brazil_gdp$gdpPerCapita, x = brazil_gdp$margin_t, c = 0)
 summary(rd_gdp)
 ```
 
-A large p-value here means GDP per capita doesn't jump at the cutoff --- good. Municipalities where the incumbent party barely won are similar to those where it barely lost.
+The p-value is large (0.45) --- GDP per capita does **not** jump at the cutoff. Municipalities where the incumbent party barely won are economically similar to those where it barely lost. This is what we want to see.
+
+```{r brazil-covariate-plot}
+rdplot(y = brazil_gdp$gdpPerCapita, x = brazil_gdp$margin_t, c = 0,
+       title = "Covariate Balance: GDP per Capita Around Cutoff",
+       x.label = "Margin of Victory at t",
+       y.label = "GDP per Capita")
+```
+
+No visible jump. The dots (binned averages) and fitted lines meet smoothly at the cutoff. GDP is balanced.
 
 ### 3.5 Main Estimate
 
-Now the main event: what's the causal effect of barely winning an election on next-election performance?
+Now the main event: what's the causal effect of barely winning an election on next-election performance? We pass our running variable `X` (margin at $t$) and outcome `Y` (margin at $t+1$) to `rdrobust`, with the cutoff at 0:
 
 ```{r brazil-rdrobust}
 rd_brazil <- rdrobust(Y, X, c = 0)
 summary(rd_brazil)
 ```
 
-The estimate is **negative**: barely winning at $t$ causes a **decrease** in vote margin at $t+1$. In the full paper, the main estimate is about **-15 percentage points** --- barely winning essentially *halves* the party's probability of winning next time (from ~30% to ~15%).
+The estimate is **negative** (about -6.3 percentage points): barely winning at $t$ causes a **decrease** in vote margin at $t+1$. The incumbency curse is real --- holding office hurts the party's future performance.
 
-Klašnja & Titiunik also studied five additional Latin American countries and found a striking pattern: **the incumbency curse only appears in countries with term limits** (Mexico: -28 pp, Colombia: -20 pp). In Peru and Chile, which allow indefinite reelection, the effect disappears. This strongly supports their theory that the curse comes from the combination of weak parties and term limits, not from something specific to Brazil.
+Klašnja & Titiunik also studied five additional Latin American countries and found a striking pattern: **the incumbency curse only appears in countries with term limits** (Mexico, Colombia). In Peru and Chile, which allow indefinite reelection, the effect disappears. This strongly supports their theory that the curse comes from the combination of weak parties and term limits, not from something specific to Brazil.
 
 ```{r brazil-rdplot}
 rdplot(Y, X, c = 0,
@@ -946,11 +1005,11 @@ rdplot(Y, X, c = 0,
        y.label = "Margin of Victory at t+1")
 ```
 
-`rdplot` constructs the RD plot using data-driven bin selection --- it chooses the number and size of bins to best represent the underlying regression function. The jump at the cutoff is the treatment effect.
+How to read this plot: `rdplot` takes the raw scatterplot (thousands of points) and makes it readable. It divides the running variable into evenly-spaced **bins**, computes the **average outcome** within each bin (the dots), and fits a polynomial on each side of the cutoff (the smooth lines). The **jump** between the two fitted lines at the cutoff is the treatment effect. Here, the line on the right starts clearly lower than where the line on the left ends --- the incumbency curse is visible.
 
 ### 3.6 Manual Estimate for Comparison
 
-Let's also do this with plain `lm()` to see how close we get:
+Let's do this with plain `lm()` to see how bandwidth matters. We'll try two approaches: using all the data, and restricting to a narrow window around the cutoff ($\pm 20$ percentage points).
 
 ```{r brazil-manual}
 brazil_clean$won <- ifelse(brazil_clean$margin_t >= 0, 1, 0)
@@ -963,7 +1022,7 @@ brazil_local <- brazil_clean[abs(brazil_clean$margin_t) <= 20, ]
 m_brazil_local <- lm(margin_t1 ~ margin_t + won, data = brazil_local)
 
 compare_brazil <- data.frame(
-  Method = c("Manual (all data)", "Manual (|X| <= 20)", "rdrobust (optimal BW)"),
+  Method = c("Manual (all data)", "Manual (margin within 20)", "rdrobust (optimal BW)"),
   Estimate = round(c(coef(m_brazil_full)["won"],
                      coef(m_brazil_local)["won"],
                      rd_brazil$coef[1]), 2),
@@ -976,7 +1035,11 @@ kable(compare_brazil, caption = "Brazil RDD: Manual vs rdrobust") |>
   kable_styling(bootstrap_options = "striped", full_width = FALSE)
 ```
 
-> **Your Turn**: Try different bandwidth values in the manual approach ($\pm 10$, $\pm 30$, $\pm 50$). How do the estimates change? Which is closest to the `rdrobust` estimate?
+Look at the first row: the full-data manual estimate is **positive** (+2.07) --- the wrong sign! How can this be? The problem is that using all the data includes municipalities that won or lost by huge margins (40, 60, 80 points). At those distances from the cutoff, the linear approximation breaks down badly. Parties that won by 50 points are fundamentally different from parties that lost by 50 points --- they're popular, well-organized, dominant. Of course they do well at $t+1$ too. This positive correlation between $margin_t$ and $margin_t1$ overwhelms the local causal effect at the cutoff, flipping the sign entirely.
+
+Once we restrict to within 20 points of the cutoff (-6.00), we recover the negative effect. The `rdrobust` estimate (-6.28) is very similar --- both are looking at data close to the cutoff where the comparison is credible. This is a vivid demonstration of why **bandwidth matters**: using too much data doesn't just add noise, it can give you the **wrong answer**.
+
+**A note on covariates**: You may have noticed we didn't use covariates like GDP per capita, population, or party indicators as controls in our RDD estimates. That's because the strength of RDD is that you don't need them for identification --- near the cutoff, treatment is essentially random, so there are no confounders to control for. However, you *can* include covariates to reduce residual variance and improve precision (tighter CIs). In `rdrobust`, you'd pass them via the `covs` argument: `rdrobust(Y, X, c = 0, covs = cbind(gdpPerCapita, population))`. This can help in small samples, but the point estimates shouldn't change much if the design is valid.
 
 ---
 
@@ -999,12 +1062,12 @@ RDD gives you a **Local Average Treatment Effect (LATE)** --- the effect at the 
 
 ### Sharp vs Fuzzy RDD
 
-Everything we've done today is **sharp RDD**: treatment switches perfectly at the cutoff. In **fuzzy RDD**, the cutoff changes the *probability* of treatment but doesn't determine it perfectly. For example:
+Everything we've covered is **sharp RDD**: treatment switches perfectly at the cutoff. In **fuzzy RDD**, the cutoff changes the *probability* of treatment but doesn't determine it perfectly. For example:
 
 - Scoring above a threshold makes you *eligible* for a program, but not everyone who's eligible enrolls.
 - This requires instrumental variables (IV) techniques --- the cutoff is an instrument for treatment.
 
-We won't cover fuzzy RDD today, but the intuition is the same: exploit the discontinuity, just with an extra step to handle imperfect compliance.
+We won't cover fuzzy RDD here, but the intuition is the same: exploit the discontinuity, just with an extra step to handle imperfect compliance.
 
 ### Bandwidth Choice
 
@@ -1013,32 +1076,6 @@ The bandwidth is the most important practical decision in RDD:
 - **Too narrow**: High variance (few observations), but low bias (truly local estimate).
 - **Too wide**: Low variance (many observations), but high bias (distant observations contaminate the estimate).
 - **rdrobust's solution**: MSE-optimal bandwidth with bias-corrected inference. This is the current best practice.
-
-### Key Takeaways
-
-```{r takeaway-table}
-takeaways <- data.frame(
-  Question = c(
-    "What does RDD estimate?",
-    "Key assumption?",
-    "How to test the assumption?",
-    "What's the bandwidth?",
-    "Sharp vs Fuzzy?",
-    "Main limitation?"
-  ),
-  Answer = c(
-    "LATE - the causal effect at the cutoff",
-    "No precise manipulation of the running variable",
-    "Density test (rddensity) + covariate balance",
-    "How far from cutoff we use data (bias-variance tradeoff)",
-    "Sharp = perfect compliance; Fuzzy = probabilistic",
-    "External validity - effect may not generalize away from cutoff"
-  )
-)
-
-kable(takeaways, caption = "RDD Cheat Sheet") |>
-  kable_styling(bootstrap_options = "striped", full_width = FALSE)
-```
 
 ### Connection to Other Methods
 

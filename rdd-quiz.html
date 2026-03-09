@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>What's the RDD Here? - Interactive Practice</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif;
+            line-height: 1.6; color: #333; background: #f8f9fa;
+        }
+
+        /* Navigation */
+        .navbar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; padding: 15px 20px; position: sticky; top: 0; z-index: 100;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+        }
+        .nav-container {
+            max-width: 900px; margin: 0 auto;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .nav-back {
+            color: white; text-decoration: none; font-weight: 600; font-size: 0.95rem;
+            padding: 8px 16px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.4);
+            transition: background 0.2s; white-space: nowrap;
+        }
+        .nav-back:hover { background: rgba(255,255,255,0.15); }
+        .nav-title { font-size: 1.2rem; font-weight: 600; }
+        .nav-stats { font-size: 0.85rem; opacity: 0.9; }
+
+        /* Container */
+        .container { max-width: 900px; margin: 0 auto; padding: 30px 20px 60px; }
+
+        /* Intro */
+        .intro {
+            background: white; border-radius: 12px; padding: 30px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 30px;
+            border-left: 5px solid #667eea;
+        }
+        .intro h2 { color: #667eea; margin-bottom: 10px; font-size: 1.3rem; }
+        .intro p { color: #555; font-size: 0.95rem; }
+        .intro ul { margin: 10px 0 0 20px; color: #555; font-size: 0.95rem; }
+
+        /* Filter bar */
+        .filter-bar {
+            display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 25px;
+            align-items: center;
+        }
+        .filter-bar span { font-weight: 600; color: #555; font-size: 0.9rem; margin-right: 5px; }
+        .filter-btn {
+            padding: 6px 14px; border-radius: 20px; border: 1.5px solid #ddd;
+            background: white; cursor: pointer; font-size: 0.82rem; color: #555;
+            transition: all 0.2s;
+        }
+        .filter-btn:hover { border-color: #667eea; color: #667eea; }
+        .filter-btn.active { background: #667eea; color: white; border-color: #667eea; }
+
+        /* Scenario Card */
+        .scenario-card {
+            background: white; border-radius: 12px; padding: 30px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 24px;
+            border-left: 5px solid #e0e0e0; transition: border-color 0.3s;
+        }
+        .scenario-card.revealed { border-left-color: #667eea; }
+
+        .card-header {
+            display: flex; justify-content: space-between; align-items: flex-start;
+            margin-bottom: 15px;
+        }
+        .card-number {
+            background: #f0f0f0; color: #888; font-weight: 700; font-size: 0.8rem;
+            padding: 3px 10px; border-radius: 12px;
+        }
+        .card-field {
+            font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+            letter-spacing: 0.5px; padding: 3px 10px; border-radius: 12px;
+        }
+        .field-education { background: #e3f2fd; color: #1565c0; }
+        .field-health { background: #e8f5e9; color: #2e7d32; }
+        .field-political { background: #fce4ec; color: #c62828; }
+        .field-crime { background: #fff3e0; color: #e65100; }
+        .field-labor { background: #f3e5f5; color: #6a1b9a; }
+        .field-environment { background: #e0f2f1; color: #00695c; }
+        .field-development { background: #fff8e1; color: #f57f17; }
+        .field-finance { background: #efebe9; color: #4e342e; }
+        .field-housing { background: #e8eaf6; color: #283593; }
+
+        .scenario-title { font-size: 1.2rem; font-weight: 700; color: #333; margin-bottom: 8px; }
+        .scenario-context { color: #555; font-size: 0.95rem; margin-bottom: 20px; line-height: 1.75; }
+
+        /* Questions */
+        .question-prompt {
+            background: #f9f9ff; border-radius: 8px; padding: 16px 18px;
+            margin-bottom: 16px; font-size: 0.95rem; color: #444;
+            border: 1px solid #eee;
+        }
+        .question-prompt strong { color: #667eea; }
+
+        /* Answer slots */
+        .answer-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+        }
+        .answer-slot {
+            border: 1.5px dashed #ddd; border-radius: 8px; padding: 14px;
+            cursor: pointer; transition: all 0.2s; min-height: 70px;
+        }
+        .answer-slot:hover { border-color: #667eea; background: #fafafe; }
+        .answer-slot.revealed {
+            border-style: solid; border-color: #667eea; background: #f8f9ff; cursor: default;
+        }
+        .slot-label {
+            font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.8px; color: #999; margin-bottom: 6px;
+        }
+        .slot-prompt { color: #bbb; font-size: 0.88rem; font-style: italic; }
+        .slot-answer { display: none; color: #333; font-size: 0.92rem; font-weight: 500; }
+        .answer-slot.revealed .slot-prompt { display: none; }
+        .answer-slot.revealed .slot-answer { display: block; }
+
+        /* Reveal button */
+        .card-actions { margin-top: 16px; text-align: right; }
+        .reveal-btn {
+            padding: 10px 24px; border-radius: 20px; border: 1.5px solid #667eea;
+            background: white; color: #667eea; cursor: pointer; font-size: 0.88rem;
+            font-weight: 600; transition: all 0.2s;
+        }
+        .reveal-btn:hover { background: #667eea; color: white; }
+
+        /* Explanation (hidden until revealed) */
+        .explanation {
+            display: none; margin-top: 20px; padding: 20px;
+            background: linear-gradient(135deg, #f5f7ff 0%, #f0f4ff 100%);
+            border-radius: 10px; border: 1px solid #e0e5f5;
+        }
+        .scenario-card.revealed .explanation { display: block; }
+
+        .explanation h4 {
+            color: #667eea; font-size: 0.95rem; margin-bottom: 10px;
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .explanation p {
+            font-size: 0.92rem; color: #444; line-height: 1.75; margin-bottom: 12px;
+        }
+        .explanation p:last-child { margin-bottom: 0; }
+        .explanation .cite {
+            font-size: 0.82rem; color: #888; font-style: italic;
+            border-top: 1px solid #dde; padding-top: 10px; margin-top: 12px;
+        }
+
+        /* Footer */
+        footer {
+            background: #333; color: white; text-align: center;
+            padding: 25px 20px; margin-top: 40px; font-size: 0.85rem;
+        }
+        footer a { color: #a5b4fc; text-decoration: none; }
+        footer a:hover { text-decoration: underline; }
+
+        @media (max-width: 600px) {
+            .answer-grid { grid-template-columns: 1fr; }
+            .nav-title { font-size: 1rem; }
+            .card-header { flex-direction: column; gap: 8px; }
+            .scenario-card { padding: 20px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="nav-back">&larr; Back to Sessions</a>
+            <span class="nav-title">What's the RDD Here?</span>
+            <span class="nav-stats" id="stats">18 scenarios</span>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="intro">
+            <h2>How This Works</h2>
+            <p>Each card describes a real published study that used Regression Discontinuity Design. Read the scenario, then ask yourself:</p>
+            <ul>
+                <li><strong>Running variable</strong> &mdash; What continuous variable determines who gets treated?</li>
+                <li><strong>Cutoff</strong> &mdash; At what value does treatment switch on?</li>
+                <li><strong>Treatment</strong> &mdash; What changes when you cross the cutoff?</li>
+                <li><strong>Outcome</strong> &mdash; What is being measured?</li>
+            </ul>
+            <p style="margin-top: 12px; font-size: 0.88rem; color: #888;">Click any box to check your answer, or click "Show Answer" to reveal everything — including a detailed explanation of why the RDD works, what the researchers found, and what makes the study interesting.</p>
+        </div>
+
+        <div class="filter-bar">
+            <span>Filter:</span>
+            <button class="filter-btn active" data-filter="all">All</button>
+            <button class="filter-btn" data-filter="education">Education</button>
+            <button class="filter-btn" data-filter="health">Health</button>
+            <button class="filter-btn" data-filter="political">Political Economy</button>
+            <button class="filter-btn" data-filter="labor">Labor</button>
+            <button class="filter-btn" data-filter="crime">Crime</button>
+            <button class="filter-btn" data-filter="environment">Environment</button>
+            <button class="filter-btn" data-filter="development">Development</button>
+            <button class="filter-btn" data-filter="finance">Finance / Housing</button>
+        </div>
+
+        <div id="scenarios"></div>
+    </div>
+
+    <footer>
+        <p>RDD Practice &mdash; <a href="index.html">R Sessions: Causal Inference</a> &mdash; Applications cataloged from Lee &amp; Lemieux (2010, <em>JEL</em>) and Cattaneo &amp; Titiunik (2022, <em>ARE</em>)</p>
+    </footer>
+
+<script>
+const scenarios = [
+    {
+        id: 1, field: "health", fieldLabel: "Health",
+        title: "Does Legal Drinking Kill?",
+        context: "In the United States, the minimum legal drinking age is 21. On your 21st birthday, you can walk into a bar and legally buy alcohol. The day before, you couldn't. Carpenter & Dobkin (2009) used death certificate data covering every death in the US from 1997 to 2004 and asked: does gaining legal access to alcohol increase mortality?",
+        running: "Age (measured in fine cells of roughly 2-month intervals)",
+        cutoff: "21 years old (the minimum legal drinking age)",
+        treatment: "Legal access to alcohol purchase",
+        outcome: "Death rate per 100,000 (all causes, and broken down by specific cause)",
+        explanation: `<p>This is a <strong>sharp RDD</strong>: everyone below 21 is denied legal access to alcohol, everyone at or above 21 gets it. The key assumption is that people who are 20 years and 11 months old are essentially identical to people who just turned 21 — same health, same risk-taking behavior, same social environment. The only thing that changes at the cutoff is the legal right to buy alcohol.</p>
+        <p>Carpenter & Dobkin found a roughly <strong>9% increase in overall mortality</strong> at age 21. But the most powerful part of the paper is the cause-of-death decomposition. Alcohol-related deaths jumped by ~35%, motor vehicle accident deaths by ~15%, and suicide by ~16%. But <strong>internal causes</strong> (disease, organ failure) showed no jump at all — cancer doesn't care about your birthday. And <strong>homicide</strong> didn't jump either — buying beer doesn't make others murder you. This pattern is a built-in falsification test: if something other than alcohol were driving the mortality jump, you'd expect all causes to increase uniformly.</p>
+        <p>An important subtlety: the effect is <strong>not driven by new drinkers</strong>. Lifetime drinking participation barely changes at 21 — most Americans have already tried alcohol before their 21st birthday. What changes is <em>frequency</em>: people drink on more days when it's legal and convenient, but they don't drink more per occasion. The law removes a friction (needing a fake ID, finding someone older to buy for you), and this increased frequency is enough to cause measurably more deaths.</p>
+        <p>Before this paper, a large literature had exploited historical variation in state drinking ages during the 1970s–80s, but those studies suffered from endogeneity (states that lowered their drinking age may have had different drinking cultures). By using the current, uniform MLDA of 21 with an RDD, Carpenter & Dobkin sidestepped this problem entirely.</p>
+        <p class="cite">Carpenter, C. & Dobkin, C. (2009). "The Effect of Alcohol Consumption on Mortality: Regression Discontinuity Evidence from the Minimum Drinking Age." American Economic Journal: Applied Economics, 1(1): 164–182.</p>`
+    },
+    {
+        id: 2, field: "education", fieldLabel: "Education",
+        title: "Does Class Size Matter?",
+        context: "Israeli public schools follow a rule dating back to the 12th-century scholar Maimonides: when enrollment in a grade exceeds 40, the school must split into two classes. So a school with 39 students has one class of 39, but a school with 41 students gets two classes of about 20. Angrist & Lavy (1999) used this rule to study whether smaller classes improve learning.",
+        running: "Total student enrollment in a grade",
+        cutoff: "Multiples of 40 students (40, 80, 120, ...)",
+        treatment: "Smaller class size (an extra class is created when enrollment crosses the threshold)",
+        outcome: "Standardized test scores",
+        explanation: `<p>This is a <strong>fuzzy RDD</strong>: enrollment predicts class size, but not perfectly. Schools don't always split exactly at 40 — some split early, others delay. The enrollment threshold is an instrument for actual class size, not a deterministic treatment assignment.</p>
+        <p>The RDD works here because of what Lee & Lemieux (2010) call "necessary discretization" — schools can only have a whole number of classes. A school with 40 students has 1 class of 40. A school with 41 <em>must</em> create a second class, so average class size drops from 40 to about 20.5. This creates a sawtooth pattern: class size increases smoothly with enrollment, then drops sharply at every multiple of 40.</p>
+        <p>Angrist & Lavy found that smaller classes led to <strong>significantly higher test scores</strong>, especially for disadvantaged students. This result was enormously influential because class size is one of the most expensive education policy levers — answering whether it "works" has direct budget implications for every school system in the world.</p>
+        <p>An important warning: Urquiola & Verhoogen (2009) later showed that in Chile's private school system, schools strategically manipulate enrollment to stay below class-size thresholds. This sorting violates the RDD assumption. In Israel's public system, where enrollment is geographically determined and schools don't control admissions, this concern is much weaker.</p>
+        <p class="cite">Angrist, J. & Lavy, V. (1999). "Using Maimonides' Rule to Estimate the Effect of Class Size on Scholastic Achievement." Quarterly Journal of Economics, 114(2): 533–575.</p>`
+    },
+    {
+        id: 3, field: "political", fieldLabel: "Political Economy",
+        title: "The Power of Incumbency",
+        context: "In US House elections, does barely winning give your party an advantage next time around? Lee (2008) compared districts where the Democrat won by a hair (50.1%) to districts where the Democrat barely lost (49.9%). These razor-thin elections are essentially coin flips — yet one side gets to be the incumbent. Using 6,558 elections from 1946 to 1998, he measured what happens in the next election.",
+        running: "Democratic vote share margin (Democrat share minus Republican share)",
+        cutoff: "50% of the vote (margin = 0)",
+        treatment: "The Democratic candidate wins the seat and becomes the incumbent",
+        outcome: "Democratic vote share in the next election",
+        explanation: `<p>This is the <strong>canonical sharp RDD</strong> in economics — the example used in virtually every textbook and survey. It's sharp because winning is determined exactly at 50%: there's no ambiguity, no partial treatment, no fuzzy compliance.</p>
+        <p>The key insight is that in razor-close elections, which candidate wins is essentially random — determined by a few hundred voters' last-minute decisions, weather on election day, or random events. So comparing districts where the Democrat barely won to districts where the Democrat barely lost is like comparing treated and control groups in a randomized experiment. Any systematic difference in future outcomes must be caused by winning (i.e., by holding office).</p>
+        <p>Lee found a <strong>massive incumbency advantage</strong>: barely winning one election increases the probability of winning the next election by 35–45 percentage points. This isn't just name recognition — it reflects all the advantages that come with holding office: access to media, ability to deliver services to constituents, campaign fundraising advantages, and the ability to deter strong challengers.</p>
+        <p>This result stands in sharp contrast to the "incumbency curse" found in developing democracies like Brazil (Klašnja & Titiunik 2017), where barely winning actually <em>hurts</em> future electoral performance. The difference tells us something deep about how strong vs weak party systems function.</p>
+        <p class="cite">Lee, D. S. (2008). "Randomized Experiments from Non-random Selection in U.S. House Elections." Journal of Econometrics, 142(2): 675–697.</p>`
+    },
+    {
+        id: 4, field: "political", fieldLabel: "Political Economy",
+        title: "The Incumbency Curse",
+        context: "In the US, incumbents almost always win. But in Brazil, the opposite happens — being the incumbent party is a <em>disadvantage</em>. Klašnja & Titiunik (2017) studied over 5,500 municipal elections from 1996 to 2012. Their explanation involves three ingredients: weak parties that can't discipline their politicians, term limits that create lame-duck mayors, and voters who rationally punish parties for their mayors' poor second-term performance.",
+        running: "Incumbent party's margin of victory (party's vote share minus the runner-up's)",
+        cutoff: "0 (the election threshold — positive means the party won)",
+        treatment: "The incumbent party won the election and holds office going into the next election",
+        outcome: "Incumbent party's margin of victory at the next election",
+        explanation: `<p>This is a <strong>sharp RDD</strong> with the same logic as Lee (2008), but with the opposite result. Barely winning a Brazilian municipal election causes a <strong>-15 percentage point drop</strong> in the party's next-election performance — essentially halving their probability of winning from about 30% to about 15%.</p>
+        <p>The theoretical mechanism is fascinating. Brazilian parties are among the weakest in any democracy — over half of mayors who run again <em>switch parties</em>. When you combine this weakness with two-term limits, you get a vicious cycle: a second-term mayor is a lame duck with no reelection incentive, the weak party can't punish shirking, the mayor provides fewer public goods, and voters rationally punish the party at the next election. The authors call this "unfulfilled accountability" — voters try to hold parties accountable, but the punishment can't actually fix the underlying problem.</p>
+        <p>The paper tests this mechanism three ways: (1) the effect is much larger when the incumbent is a lame duck (-21 pp) vs an open seat (-4 pp); (2) lame-duck mayors provide fewer public goods; and (3) Brazil's one strong party (the PT, Workers' Party) shows a muted effect, confirming that party strength matters. They also show the curse appears in Mexico and Colombia (which have term limits) but disappears in Peru and Chile (which allow unlimited reelection).</p>
+        <p>An important point about external validity: Brazilian municipal elections are very competitive — the median margin is only 11 percentage points and a quarter of races are decided by 5 points or less. So the close-election LATE is actually representative of a large share of elections, not just a rare fringe.</p>
+        <p class="cite">Klašnja, M. & Titiunik, R. (2017). "The Incumbency Curse: Weak Parties, Term Limits, and Unfulfilled Accountability." American Political Science Review, 111(1): 129–148.</p>`
+    },
+    {
+        id: 5, field: "crime", fieldLabel: "Crime",
+        title: "Does Harsher Punishment Deter Crime?",
+        context: "When you turn 18 in Florida, you transition from the juvenile to the adult justice system. Punishments get dramatically harsher overnight — longer sentences, adult prison instead of juvenile detention, a permanent criminal record. If deterrence theory is right, rational criminals should commit fewer offenses right after their 18th birthday. Lee & McCrary (2005) tested this directly.",
+        running: "Age at the time of arrest",
+        cutoff: "18 years old (age of majority)",
+        treatment: "Being processed through the adult justice system (dramatically harsher sanctions)",
+        outcome: "Arrest rates (frequency of criminal offending)",
+        explanation: `<p>This is a <strong>sharp RDD</strong>: the transition from juvenile to adult court is determined exactly by age at the time of the offense. The key assumption is that 17-year-and-364-day-olds are essentially identical to 18-year-olds — same social environment, same peer groups, same economic circumstances. The only thing that changes at 18 is the severity of punishment.</p>
+        <p>The result was striking: <strong>the sharp increase in punishment severity had a negligible deterrent effect</strong>. Arrest rates showed only a tiny, statistically insignificant decline at age 18. People kept offending at nearly the same rate despite facing much harsher consequences.</p>
+        <p>This challenges simple deterrence theory — the idea that people weigh the costs and benefits of crime and respond to higher punishments by committing fewer offenses. Several explanations have been proposed: young offenders may not be well-informed about the legal system, they may be present-biased (heavily discounting future punishment), or criminal behavior may be driven more by impulsivity than by rational calculation.</p>
+        <p>The study is also methodologically important because Lee & McCrary developed the <strong>density test</strong> for manipulation of the running variable. In this context, if criminals could precisely time their offenses to occur before their 18th birthday (to get juvenile treatment), you'd see a bunching of offenses just below 18. They found no such bunching.</p>
+        <p class="cite">Lee, D. S. & McCrary, J. (2005). "Crime, Punishment, and Myopia." NBER Working Paper 11491.</p>`
+    },
+    {
+        id: 6, field: "health", fieldLabel: "Health",
+        title: "Does Medicare Save Lives?",
+        context: "In the United States, nearly everyone becomes eligible for Medicare health insurance on their 65th birthday. Before 65, many Americans — especially those without employer coverage — are uninsured or underinsured. Card, Dobkin & Maestas (2008, 2009) exploited this age cutoff to ask: does gaining health insurance actually change how much healthcare people use? And does it save lives?",
+        running: "Age",
+        cutoff: "65 years old (Medicare eligibility)",
+        treatment: "Near-universal health insurance coverage through Medicare",
+        outcome: "Healthcare utilization, insurance coverage rates, and mortality",
+        explanation: `<p>This is a <strong>fuzzy RDD</strong>: not everyone gains insurance at 65 (some already had it through employers or other programs), and not everyone without prior insurance signs up immediately. But there's a large, sharp increase in coverage at the threshold.</p>
+        <p>The authors found that Medicare at 65 led to a <strong>significant increase in healthcare utilization</strong> — people who gain coverage start seeing doctors, getting tests, and receiving treatments they couldn't previously afford. Insurance coverage jumps by about 8 percentage points at age 65.</p>
+        <p>The mortality question is more nuanced. While the design clearly shows increased healthcare use, whether this translates into meaningfully lower death rates is harder to pin down with this particular RDD. One issue is that mortality is a relatively rare event even among 65-year-olds, so detecting small changes requires enormous precision. The RDD gives a very clean causal estimate for healthcare utilization but the mortality effects, while in the expected direction, are modest.</p>
+        <p>This study is important for health policy because it provides causal evidence on one of the biggest policy questions in the US: does insurance coverage actually improve health? The answer is nuanced — insurance clearly increases access to care, but the health benefits depend on what care people receive and how quickly.</p>
+        <p class="cite">Card, D., Dobkin, C. & Maestas, N. (2008). "The Impact of Nearly Universal Insurance Coverage on Health Care Utilization." American Economic Review, 98(5): 2242–2258.</p>`
+    },
+    {
+        id: 7, field: "environment", fieldLabel: "Environment",
+        title: "Does Clean Air Save Babies?",
+        context: "The US Clean Air Act of 1970 designated counties as \"nonattainment\" if their air pollution exceeded federal standards. These counties faced mandatory regulations — new factories needed permits, existing polluters had to install controls. Counties that just barely exceeded the standard got hit with expensive regulations, while counties that barely met it did not. Chay & Greenstone (2003) compared these otherwise similar counties.",
+        running: "Total Suspended Particulate (TSP) pollution concentration",
+        cutoff: "The federal air quality standard threshold (nonattainment designation)",
+        treatment: "Being designated \"nonattainment\" — mandatory pollution reduction regulations",
+        outcome: "Infant mortality rates",
+        explanation: `<p>This is a <strong>fuzzy RDD</strong>: the nonattainment designation triggered stronger regulation, but actual pollution reductions varied across counties depending on their industrial composition and how aggressively regulators enforced the rules.</p>
+        <p>Chay & Greenstone found that counties forced into compliance experienced <strong>significant reductions in infant mortality</strong>. This was some of the cleanest causal evidence that air pollution kills — previous studies had struggled with the endogeneity problem that pollution levels correlate with poverty, industrial composition, and other factors that independently affect health.</p>
+        <p>The RDD sidesteps this by comparing counties that are nearly identical in their pollution levels — they just happen to fall on different sides of the regulatory threshold. The only systematic difference is regulatory pressure, and this pressure reduced pollution, which in turn reduced infant deaths.</p>
+        <p>In a companion paper (2005), Chay & Greenstone used the same design to estimate how much people are willing to pay for clean air, by looking at housing prices rather than mortality. Counties that cleaned up their air saw housing values rise — a market signal that people value clean air enough to pay for it through higher rents and home prices.</p>
+        <p class="cite">Chay, K. & Greenstone, M. (2003). "The Impact of Air Pollution on Infant Mortality: Evidence from Geographic Variation in Pollution Shocks Induced by a Recession." Quarterly Journal of Economics, 118(3): 1121–1167.</p>`
+    },
+    {
+        id: 8, field: "development", fieldLabel: "Development",
+        title: "Can Microcredit Lift the Poor?",
+        context: "Bangladesh's Grameen Bank provides small loans to the rural poor. But who qualifies? The bank uses a simple eligibility rule: households that own less than half an acre of land can participate in group-based microcredit programs. Households just above this threshold are excluded. Pitt & Khandker (1998) exploited this land-ownership cutoff to estimate whether microcredit actually helps.",
+        running: "Acreage of land owned by the household",
+        cutoff: "0.5 acres (households below this are eligible for microcredit)",
+        treatment: "Eligibility for Grameen Bank-type group-based microcredit",
+        outcome: "Labor supply and children's school enrollment",
+        explanation: `<p>This is a <strong>fuzzy RDD</strong>: the 0.5-acre rule determines eligibility, but not everyone who is eligible participates, and enforcement of the rule isn't perfect. The running variable (land ownership) is measured imprecisely and could potentially be manipulated by selling small plots.</p>
+        <p>Pitt & Khandker found that microcredit had <strong>significant positive effects</strong> on household outcomes, with notably larger effects for female participants than for male participants. This gender difference became a cornerstone of the argument for targeting microcredit specifically to women.</p>
+        <p>However, this study is also a cautionary tale about RDD assumptions. The 0.5-acre cutoff is known to village participants, which creates incentives for manipulation — households near the threshold might sell small pieces of land to qualify. If wealthier, more entrepreneurial households are the ones doing this, the RDD estimate would be biased upward. Later randomized experiments (e.g., Banerjee et al. 2015) found more modest effects of microcredit than the original RDD estimates, suggesting some of this concern was warranted.</p>
+        <p>The study remains important as an early and influential application of RDD in development economics, and it shaped billions of dollars of microfinance policy worldwide.</p>
+        <p class="cite">Pitt, M. & Khandker, S. (1998). "The Impact of Group-Based Credit Programs on Poor Households in Bangladesh." Journal of Political Economy, 106(5): 958–996.</p>`
+    },
+    {
+        id: 9, field: "development", fieldLabel: "Development",
+        title: "Centuries-Old Forced Labor, Still Visible Today",
+        context: "From the 16th to early 19th century, the Spanish colonial government in Peru forced indigenous communities in certain regions to send workers to silver and mercury mines — a brutal system called the \"mita.\" The mita's boundary was a geographic line drawn on a map. Villages inside the line sent workers; villages just outside did not. Dell (2010) asked a remarkable question: does this 200-year-old institution still affect economic outcomes today?",
+        running: "Geographic location (latitude and longitude relative to the historical mita boundary)",
+        cutoff: "The mita boundary line drawn by Spanish colonial administrators",
+        treatment: "Being inside the mita region (subjected to forced mining labor during the colonial era)",
+        outcome: "Modern-day household consumption, child stunting, and public goods provision",
+        explanation: `<p>This is a <strong>sharp geographic RDD</strong> — one of the first papers to explicitly use latitude and longitude as a two-dimensional running variable. Villages on opposite sides of the boundary are geographically close, share similar climate and geography, and had similar pre-colonial populations. The only systematic historical difference is whether they were inside or outside the mita's reach.</p>
+        <p>Dell found that the mita's effects are <strong>still visible centuries later</strong>. Communities inside the historical boundary have significantly lower household consumption today, higher rates of child stunting, and worse public goods (roads, infrastructure). The estimated effect on consumption is roughly 25% lower inside the mita region compared to just outside.</p>
+        <p>The mechanism isn't simply that the mines depleted resources — it's that the mita disrupted local institutions. Inside the mita region, the Spanish destroyed traditional land-holding patterns and community structures to mobilize labor. Outside the region, large landholding (hacienda) systems emerged instead, which, while exploitative, left some institutional infrastructure that facilitated later development.</p>
+        <p>This paper is a landmark in the "persistence of institutions" literature. It shows that arbitrary administrative boundaries drawn hundreds of years ago can have lasting consequences — a powerful demonstration of path dependence in economic development.</p>
+        <p class="cite">Dell, M. (2010). "The Persistent Effects of Peru's Mining Mita." Econometrica, 78(6): 1863–1903.</p>`
+    },
+    {
+        id: 10, field: "labor", fieldLabel: "Labor",
+        title: "Severance Pay: Insurance or Moral Hazard?",
+        context: "In Austria, workers who are laid off after a certain tenure threshold receive a lump-sum severance payment. Workers with slightly less tenure get nothing. Card, Chetty & Weber (2007) used this to answer a fundamental question about unemployment benefits: when people stay unemployed longer after getting benefits, is it because they can afford to search carefully for a good job (a good thing), or because the benefits make unemployment more attractive (a bad thing)?",
+        running: "Job tenure (months of continuous employment at the firm)",
+        cutoff: "The tenure threshold for severance pay eligibility",
+        treatment: "Receiving a lump-sum severance payment upon layoff",
+        outcome: "Unemployment duration (how long until they find a new job)",
+        explanation: `<p>This is a <strong>sharp RDD</strong>: the severance payment eligibility is determined exactly by tenure. Workers with one day more than the threshold get the payment; workers with one day less do not.</p>
+        <p>The clever insight of this paper is that it separates two channels through which benefits affect unemployment duration. <strong>Liquidity effects</strong> (having more cash) should apply equally to lump-sum severance and to ongoing benefit extensions — in both cases, the unemployed person has more money. <strong>Moral hazard</strong> (distorted incentives) should only apply to ongoing benefits, because a lump sum doesn't change the marginal incentive to find a job: you get the same lump sum whether you find a job tomorrow or in six months. Extended benefits, by contrast, give you more money the longer you stay unemployed.</p>
+        <p>The result: <strong>lump-sum severance pay had almost no effect on unemployment duration</strong>, while extended benefit duration substantially increased it. This means moral hazard — not liquidity constraints — is the primary reason unemployment benefits increase joblessness. Workers respond to the <em>incentive structure</em> of benefits, not just the <em>cash</em>.</p>
+        <p>This distinction has direct policy implications: if the goal is to help unemployed workers without discouraging job search, lump-sum payments might be better than extended weekly benefits.</p>
+        <p class="cite">Card, D., Chetty, R. & Weber, A. (2007). "Cash-on-Hand and Competing Models of Intertemporal Behavior." Quarterly Journal of Economics, 122(4): 1511–1556.</p>`
+    },
+    {
+        id: 11, field: "development", fieldLabel: "Development",
+        title: "Grandma's Pension Sends Kids to School",
+        context: "In South Africa, elderly citizens become eligible for a government old-age pension at a certain age. When the oldest person in a household starts receiving this pension, the extra income flows into the household budget. Edmonds (2004) noticed that this creates a natural experiment: households where the oldest member is just below vs just above the pension age are otherwise similar, but one group has significantly more income.",
+        running: "Age of the oldest family member",
+        cutoff: "The age threshold for old-age pension eligibility",
+        treatment: "Pension receipt by the elderly household member",
+        outcome: "Child labor supply and school attendance in the same household",
+        explanation: `<p>This is a <strong>fuzzy RDD</strong>: not everyone eligible for the pension receives it immediately (take-up is high but not universal), and the pension amount may vary. But there's a clear jump in income at the eligibility threshold.</p>
+        <p>Edmonds found that pension receipt by elderly household members <strong>significantly reduced child labor and increased school attendance</strong>. The mechanism is straightforward: when the household has more income (from grandma's pension), the family can afford to keep children in school rather than sending them to work.</p>
+        <p>This finding is important for several reasons. First, it shows that <strong>income transfers to the elderly can indirectly benefit children</strong> — the money doesn't stay with the pension recipient but spreads through the household. Second, it provides evidence that child labor in developing countries is at least partly driven by poverty, not just by cultural preferences or failure to value education. When families have enough money, they choose schooling over work for their children.</p>
+        <p>The study also has implications for pension policy design: old-age pensions are not just about supporting the elderly — they're an anti-poverty and pro-education tool that benefits entire households.</p>
+        <p class="cite">Edmonds, E. (2004). "Does Illiquidity Alter Child Labor and Schooling Decisions?" Working Paper, Dartmouth College.</p>`
+    },
+    {
+        id: 12, field: "environment", fieldLabel: "Environment",
+        title: "Can You Ban Cars Into Clean Air?",
+        context: "Mexico City has some of the worst air pollution in the world. In 1989, the city implemented \"Hoy No Circula\" (\"today you don't drive\") — a program that bans cars from the road based on the last digit of their license plate. Every weekday, about 20% of cars are banned. If your plate ends in 5 or 6, you can't drive on Monday. Davis (2008) measured whether this actually reduced pollution.",
+        running: "License plate last digit combined with day of the week",
+        cutoff: "The assigned restriction day for each plate digit",
+        treatment: "Your car is banned from driving on that day",
+        outcome: "Hourly air pollutant concentrations (carbon monoxide, nitrogen oxides, etc.)",
+        explanation: `<p>This is a <strong>sharp RDD</strong> in an unusual dimension — the running variable is essentially time/day assignment based on a deterministic rule. On any given weekday, cars with certain plate numbers cannot legally be on the road.</p>
+        <p>Davis found that the driving restrictions had <strong>surprisingly limited effects on pollution</strong>. The initial reduction in traffic was quickly offset by behavioral responses: people bought second (often older, more polluting) cars, drove during unrestricted hours, or switched to taxis and other transport. Some of the pollution reduction during restricted hours was simply shifted to other hours of the day.</p>
+        <p>This study is a powerful lesson about unintended consequences and behavioral adaptation. On paper, removing 20% of cars every day should dramatically improve air quality. In practice, people are creative at finding workarounds, and those workarounds can be worse than the original problem (older second cars pollute more per mile than newer primary cars).</p>
+        <p>The broader point for environmental policy: <strong>quantity restrictions</strong> (banning driving) may be less effective than <strong>price instruments</strong> (congestion charges, gasoline taxes) because quantity restrictions are easier to circumvent.</p>
+        <p class="cite">Davis, L. W. (2008). "The Effect of Driving Restrictions on Air Quality in Mexico City." Journal of Political Economy, 116(1): 38–81.</p>`
+    },
+    {
+        id: 13, field: "labor", fieldLabel: "Labor",
+        title: "Do Unions Actually Help Workers?",
+        context: "In the United States, workers at a firm can vote to form a union through an NLRB (National Labor Relations Board) election. If over 50% vote yes, the union is certified and represents all workers. DiNardo & Lee (2004) compared firms where the union barely won the election (say, 51% yes) to firms where it barely lost (49% yes). These are essentially identical firms with and without union representation.",
+        running: "Union vote share in the NLRB representation election",
+        cutoff: "50% (majority threshold for union certification)",
+        treatment: "Union victory — the firm becomes unionized",
+        outcome: "Wages, employment levels, and business survival",
+        explanation: `<p>This is a <strong>sharp RDD</strong>: union certification is determined exactly by the 50% vote threshold. A vote of 50.1% gives the union full bargaining power; a vote of 49.9% means no union representation. The elections are supervised by a federal agency, making manipulation difficult.</p>
+        <p>The results were surprising: DiNardo & Lee found <strong>surprisingly small effects of unionization on wages and virtually no effect on business survival</strong>. This contradicted the common assumption (from both union supporters and opponents) that unionization dramatically reshapes a firm's economics.</p>
+        <p>Why might unionization have smaller effects than expected? Several possible explanations: firms that barely lose a union vote may voluntarily raise wages to prevent a future vote; unions that barely win may have less bargaining power than those with overwhelming mandates; or the modern labor relations framework may limit the scope of what unions can actually negotiate. It's also possible that firms where unions barely win are already paying relatively well (which is why the union drive nearly failed).</p>
+        <p>The study is methodologically important because it demonstrates a common RDD finding: the causal effect measured at the margin (close elections) may differ from the effect at larger margins. The LATE interpretation matters — these results tell us about the effect of unionization in firms where it was a close call, not about the effect of unionization in general.</p>
+        <p class="cite">DiNardo, J. & Lee, D. S. (2004). "Economic Impacts of New Unionization on Private Sector Employers: 1984–2001." Quarterly Journal of Economics, 119(4): 1383–1441.</p>`
+    },
+    {
+        id: 14, field: "health", fieldLabel: "Health",
+        title: "Did Head Start Save Children's Lives?",
+        context: "In 1965, the US government launched Head Start — a preschool program for disadvantaged children. To roll it out quickly, the government gave special grant-writing assistance to the 300 poorest counties in America. Counties ranked 299th and 301st had nearly identical poverty rates, but one got help setting up Head Start and the other didn't. Ludwig & Miller (2007) exploited this sharp eligibility cutoff.",
+        running: "County poverty rate in 1960",
+        cutoff: "The poverty rate of the 300th poorest county (59.1984%)",
+        treatment: "Grant-writing assistance to establish Head Start programs (leading to higher Head Start enrollment)",
+        outcome: "Child mortality from causes amenable to the program (and placebo causes)",
+        explanation: `<p>This is a <strong>fuzzy RDD</strong>: the grant-writing assistance increased Head Start participation, but counties below the threshold could still seek funding independently, and not all above-threshold counties participated equally. The cutoff shifted the probability of participation, not treatment itself.</p>
+        <p>Ludwig & Miller found that Head Start assistance led to <strong>significant reductions in child mortality</strong>. But the most convincing part of the paper is the falsification test: they examined causes of death separately. Causes that Head Start could plausibly prevent (through better nutrition, health screenings, and access to medical care) showed a significant decline. Causes of death <strong>unrelated</strong> to the program showed no discontinuity at all. If the result were driven by some other county characteristic correlated with poverty, you'd expect all causes to move together.</p>
+        <p>This study became a workhorse example in the RDD methods literature. Cattaneo, Titiunik & Vazquez-Bare (2017) reanalyzed the same data to compare different modern RDD estimation approaches — it's one of the rare cases where a single dataset is used to demonstrate multiple methodological innovations.</p>
+        <p>The policy implication is direct: early childhood interventions for disadvantaged children don't just improve educational outcomes — they can literally save lives.</p>
+        <p class="cite">Ludwig, J. & Miller, D. (2007). "Does Head Start Improve Children's Life Chances?" Quarterly Journal of Economics, 122(1): 159–208.</p>`
+    },
+    {
+        id: 15, field: "finance", fieldLabel: "Finance",
+        title: "What Happens When You Nationalize Banks?",
+        context: "In India, the government nationalized all private banks above a certain asset size. Banks just above the threshold became government-owned; banks just below remained private. Cole (2009) used this cutoff to compare the lending behavior of otherwise similar banks operating under very different ownership structures.",
+        running: "Total assets (size) of the bank",
+        cutoff: "The asset size threshold for government nationalization",
+        treatment: "The bank is nationalized — becomes government-owned",
+        outcome: "Credit allocation across sectors, especially lending to agriculture and government priorities",
+        explanation: `<p>This is a <strong>sharp RDD</strong>: the nationalization decision was based on a simple size cutoff. Banks above the line became state-owned; those below remained private.</p>
+        <p>Cole found that nationalized banks <strong>significantly increased lending to agriculture and government-priority sectors</strong> — exactly what the government intended. But this came at a cost: loan default rates rose substantially, suggesting that government-directed lending was less efficient than market-driven allocation.</p>
+        <p>This study speaks to a fundamental debate in development economics: should governments use the banking system as a tool for social policy? Proponents argue that market failures (lack of credit for small farmers, infrastructure projects) justify government intervention. Critics argue that political lending leads to waste and corruption. Cole's RDD provides causal evidence on both sides: government banks do redirect credit to underserved sectors, but they also make worse lending decisions.</p>
+        <p>The study is also notable for applying RDD to a corporate/institutional setting rather than the more common individual-level applications. The running variable (bank size) is unusual — most RDD applications use test scores, age, vote shares, or geographic boundaries.</p>
+        <p class="cite">Cole, S. (2009). "Fixing Market Failures or Fixing Elections? Agricultural Credit in India." American Economic Journal: Applied Economics, 1(1): 219–250.</p>`
+    },
+    {
+        id: 16, field: "housing", fieldLabel: "Housing",
+        title: "How Much Will Parents Pay for a Better School?",
+        context: "In Massachusetts, houses on opposite sides of a school district boundary are in the same neighborhood — same commute, same supermarkets, same parks. But children attend different schools. Black (1999) compared housing prices for nearly identical houses separated by just a school district boundary to measure how much parents are willing to pay for higher-quality schools.",
+        running: "Geographic location (distance to school district boundary)",
+        cutoff: "The school district boundary line",
+        treatment: "Children attend a higher-quality school district",
+        outcome: "Housing prices",
+        explanation: `<p>This is a <strong>sharp geographic RDD</strong> — one of the first papers to use geographic boundaries as the source of discontinuous treatment assignment. The boundary determines which school your child attends with certainty (sharp), but the "running variable" is geographic location rather than a single continuous number.</p>
+        <p>Black found that <strong>parents pay significantly more for houses in better school districts</strong>, even when the houses themselves are nearly identical and located only meters apart. The premium for a 5% increase in test scores was roughly 2.5% of housing value.</p>
+        <p>This is a clever identification strategy because it holds constant all the neighborhood characteristics that might confound a simple correlation between school quality and housing prices. Two houses on the same street, with similar size and age, in the same zip code, with the same commute to downtown — but one is in a better school district. The price difference must reflect the value parents place on that school quality.</p>
+        <p>A key concern with geographic RDD is <strong>sorting</strong>: if families who value education more systematically choose to live on the "good" side of the boundary, then the households on opposite sides aren't comparable. Black addressed this by showing that observable demographics didn't jump at the boundary, but the concern remains an active area of methodological discussion for geographic RDD designs.</p>
+        <p class="cite">Black, S. E. (1999). "Do Better Schools Matter? Parental Valuation of Elementary Education." Quarterly Journal of Economics, 114(2): 577–599.</p>`
+    },
+    {
+        id: 17, field: "labor", fieldLabel: "Labor",
+        title: "Do Longer Benefits Keep People Unemployed?",
+        context: "In Austria, workers above a certain age who lose their jobs are eligible for significantly longer unemployment benefits — for example, 39 weeks instead of 30. Lalive (2007) compared workers who were laid off just before vs just after this age threshold. They're essentially the same workers facing the same job market, but one group has much more time before their benefits run out.",
+        running: "Age at the start of the unemployment spell",
+        cutoff: "The age threshold where unemployment benefit duration extends (e.g., from 30 to 39 weeks)",
+        treatment: "Extended unemployment benefit duration (more weeks of benefits)",
+        outcome: "Unemployment duration (how many weeks until they find a new job)",
+        explanation: `<p>This is a <strong>sharp RDD</strong>: the benefit duration extension is determined exactly by age at the time of layoff. Workers one day older than the threshold get 9 additional weeks of benefits; workers one day younger do not.</p>
+        <p>Lalive found that <strong>extended benefits significantly increased unemployment duration</strong>. Workers with access to longer benefits took substantially longer to find new jobs. This is consistent with standard job search theory: if benefits last longer, the "cost" of staying unemployed is lower, so workers can afford to be more selective (or less urgent) in their search.</p>
+        <p>This result connects to Card, Chetty & Weber's (2007) finding about severance pay vs. benefit duration. Together, the Austrian studies paint a clear picture: the <em>duration</em> of benefits affects job search incentives more than the <em>level</em> of cash. A lump sum doesn't change your weekly incentive to search, but knowing you have 9 more weeks of checks coming does.</p>
+        <p>Austria is an ideal setting for these studies because its unemployment insurance system has clean, rule-based eligibility thresholds (unlike many countries where caseworker discretion plays a role), and its administrative data tracks every worker and every unemployment spell with precision.</p>
+        <p class="cite">Lalive, R. (2007). "Unemployment Benefits, Unemployment Duration, and Post-Unemployment Jobs: A Regression Discontinuity Approach." American Economic Review, 97(2): 108–112.</p>`
+    },
+    {
+        id: 18, field: "health", fieldLabel: "Health",
+        title: "Does More Money Make You Live Longer?",
+        context: "In the 1970s, a change in US Social Security rules created a \"benefit notch\" — people born just before a certain date received substantially higher monthly payments for the rest of their lives compared to those born just after. Snyder & Evans (2006) compared retirees on either side of this birthdate cutoff: essentially identical people who received very different incomes for decades.",
+        running: "Birthdate (date of birth relative to the notch cutoff)",
+        cutoff: "The birthdate threshold for the Social Security benefit notch",
+        treatment: "Receiving higher monthly Social Security payments (for the rest of your life)",
+        outcome: "Mortality (survival rates over the following decades)",
+        explanation: `<p>This is a <strong>sharp RDD</strong>: the benefit level was determined exactly by birthdate. People born one day before the cutoff received substantially more money every month than people born one day after. There's no way to manipulate your date of birth.</p>
+        <p>The result was deeply counterintuitive: <strong>higher income actually increased mortality</strong>. People who received larger Social Security checks died sooner than their slightly-younger, lower-income counterparts.</p>
+        <p>The authors' proposed mechanism: higher income <strong>reduced labor force participation and social engagement</strong>. Retirees with more generous pensions retired earlier and were less likely to work part-time. This reduced their social connections, physical activity, and sense of purpose — all factors that gerontological research has linked to longevity. In other words, the money made it easier to withdraw from active life, and that withdrawal was harmful.</p>
+        <p>This finding is provocative and has generated debate. An alternative interpretation is that higher income led to higher consumption of goods that are bad for health (alcohol, rich food, sedentary leisure). The study doesn't definitively identify the mechanism, but it challenges the simple assumption that more money always equals better health outcomes.</p>
+        <p>For teaching RDD, this is a great example of how a well-identified causal estimate can produce a surprising result that forces us to rethink our assumptions.</p>
+        <p class="cite">Snyder, S. & Evans, W. (2006). "The Effect of Income on Mortality: Evidence from the Social Security Notch." Review of Economics and Statistics, 88(3): 482–495.</p>`
+    }
+];
+
+function getFieldClass(field) {
+    const map = {
+        'education': 'field-education', 'health': 'field-health',
+        'political': 'field-political', 'crime': 'field-crime',
+        'labor': 'field-labor', 'environment': 'field-environment',
+        'development': 'field-development', 'finance': 'field-finance',
+        'housing': 'field-housing'
+    };
+    return map[field] || '';
+}
+
+function renderScenarios(filter) {
+    const container = document.getElementById('scenarios');
+    const filtered = filter === 'all' ? scenarios : scenarios.filter(s => s.field === filter);
+    document.getElementById('stats').textContent = filtered.length + ' scenario' + (filtered.length !== 1 ? 's' : '');
+
+    container.innerHTML = filtered.map(s => `
+        <div class="scenario-card" id="card-${s.id}">
+            <div class="card-header">
+                <span class="card-number">#${s.id}</span>
+                <span class="card-field ${getFieldClass(s.field)}">${s.fieldLabel}</span>
+            </div>
+            <div class="scenario-title">${s.title}</div>
+            <div class="scenario-context">${s.context}</div>
+            <div class="question-prompt"><strong>Think:</strong> What is the running variable? Where is the cutoff? What is the treatment? What outcome are the researchers measuring?</div>
+            <div class="answer-grid">
+                <div class="answer-slot" onclick="revealSlot(this)">
+                    <div class="slot-label">Running Variable</div>
+                    <div class="slot-prompt">Click to reveal</div>
+                    <div class="slot-answer">${s.running}</div>
+                </div>
+                <div class="answer-slot" onclick="revealSlot(this)">
+                    <div class="slot-label">Cutoff</div>
+                    <div class="slot-prompt">Click to reveal</div>
+                    <div class="slot-answer">${s.cutoff}</div>
+                </div>
+                <div class="answer-slot" onclick="revealSlot(this)">
+                    <div class="slot-label">Treatment</div>
+                    <div class="slot-prompt">Click to reveal</div>
+                    <div class="slot-answer">${s.treatment}</div>
+                </div>
+                <div class="answer-slot" onclick="revealSlot(this)">
+                    <div class="slot-label">Outcome</div>
+                    <div class="slot-prompt">Click to reveal</div>
+                    <div class="slot-answer">${s.outcome}</div>
+                </div>
+            </div>
+            <div class="card-actions">
+                <button class="reveal-btn" onclick="revealAll(${s.id})">Show Answer &amp; Explanation</button>
+            </div>
+            <div class="explanation">
+                <h4>Why This RDD Works &mdash; And What They Found</h4>
+                ${s.explanation}
+            </div>
+        </div>
+    `).join('');
+}
+
+function revealSlot(el) {
+    el.classList.add('revealed');
+    checkAllRevealed(el.closest('.scenario-card'));
+}
+
+function revealAll(id) {
+    const card = document.getElementById('card-' + id);
+    card.querySelectorAll('.answer-slot').forEach(s => s.classList.add('revealed'));
+    card.classList.add('revealed');
+    const btn = card.querySelector('.reveal-btn');
+    btn.textContent = 'Explanation shown below';
+    btn.style.background = '#667eea';
+    btn.style.color = 'white';
+    btn.style.cursor = 'default';
+}
+
+function checkAllRevealed(card) {
+    const slots = card.querySelectorAll('.answer-slot');
+    const revealed = card.querySelectorAll('.answer-slot.revealed');
+    if (slots.length === revealed.length) {
+        card.classList.add('revealed');
+        const btn = card.querySelector('.reveal-btn');
+        btn.textContent = 'Explanation shown below';
+        btn.style.background = '#667eea';
+        btn.style.color = 'white';
+        btn.style.cursor = 'default';
+    }
+}
+
+document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        renderScenarios(this.dataset.filter);
+    });
+});
+
+renderScenarios('all');
+</script>
+</body>
+</html>

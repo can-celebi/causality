@@ -1,0 +1,1154 @@
+---
+title: "Session 6: Instrumental Variables"
+subtitle: "When You Can't Randomize, Find a Lever"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      fig.width = 8, fig.height = 5)
+```
+
+## Introduction
+
+A child watches an educational TV show and scores better on a test. Did the show help --- or was this child headed for success anyway? A country with strong legal institutions is wealthier. Do institutions cause wealth, or does wealth build institutions? A region battered by Chinese imports votes to leave the EU. Did trade cause Brexit, or are struggling regions simply different?
+
+These are all the same problem: the treatment we care about is tangled up with things we can't observe or control. We can't just compare groups because they weren't randomly assigned. We need an external lever --- something that pushes the treatment without directly affecting the outcome. That lever is an **instrumental variable**.
+
+The idea goes back to Archimedes: *"Give me a lever long enough and a fulcrum on which to place it, and I shall move the world."* In causal inference, the lever moves the treatment variable, and the fulcrum (the exclusion restriction) ensures the lever doesn't move anything else.
+
+Today we'll see this in three settings: a TV experiment on preschoolers, the colonial origins of economic development, and the globalization shock that helped produce Brexit.
+
+### Key Vocabulary
+
+| Term | Meaning |
+|------|---------|
+| **Instrument (Z)** | A variable that affects treatment but not the outcome directly |
+| **Endogenous variable (X)** | The treatment --- "endogenous" because it's correlated with unobserved confounders |
+| **First stage** | The relationship $Z \to X$ (does the instrument move the treatment?) |
+| **Reduced form** | The relationship $Z \to Y$ (does the instrument predict the outcome?) |
+| **Exclusion restriction** | $Z$ affects $Y$ *only* through $X$ --- no direct or backdoor paths |
+| **Wald estimator** | Reduced form $\div$ first stage = the IV estimate |
+| **2SLS** | Two-Stage Least Squares --- the systematic way to compute IV estimates |
+| **LATE** | Local Average Treatment Effect --- the effect for "compliers" only |
+
+```{r packages}
+rm(list = ls())
+
+# Install any missing packages automatically
+required <- c("ggplot2", "kableExtra", "AER", "estimatr", "haven", "ggrepel")
+for (pkg in required) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    install.packages(pkg, repos = "https://cloud.r-project.org")
+  }
+}
+
+library(ggplot2)
+library(kableExtra)
+library(AER)         # ivreg() for IV regression
+library(estimatr)    # iv_robust() for clustered standard errors
+library(haven)       # read_dta() for Stata files
+library(ggrepel)     # non-overlapping text labels on scatter plots
+```
+
+---
+
+## 1. Sesame Street: The Encouragement Experiment
+
+### 1.1 The Setting
+
+In 1969, the Children's Television Workshop launched *Sesame Street* --- an educational show designed to improve the literacy and numeracy of preschool children, especially those from disadvantaged backgrounds. The show was broadcast on **public television**, freely available to anyone with a TV.
+
+To evaluate whether the show actually worked, researchers designed a study across five sites in the United States during the show's second season (1970--71). The participants were **preschoolers, roughly 3 to 5 years old**. Each child was tested on several cognitive skills **before** the season began (the **pre-test**) and again **after several months** of potential viewing (the **post-test**):
+
+| Test | What it measures | Example |
+|------|-----------------|---------|
+| **Letter recognition** | Identifying letters of the alphabet | "What letter is this?" (shown the letter B) |
+| **Numbers** | Counting and number recognition | "How many objects are here?" |
+| **Body parts** | Naming and pointing to body parts | "Point to your elbow" |
+| **Forms** | Identifying and matching shapes | "Which of these is a triangle?" |
+| **Relations** | Spatial and logical concepts | "Which is bigger?" |
+| **Classification** | Sorting and grouping objects | "Which of these things go together?" |
+
+Our main outcome `y` is the **post-test letter recognition score**. The variable `pretest` is the same test administered **before the viewing period** began.
+
+Children were randomly assigned to two groups. In the **encouraged** group, families received home visits, promotional materials, and persuasive arguments to have their children watch regularly. The other group received no such encouragement.
+
+The key subtlety: **watching was not randomly assigned**. Since Sesame Street was on public TV, researchers couldn't stop anyone from watching. Many children in the non-encouraged group watched anyway --- the show was popular and freely available. And some encouraged children still didn't watch regularly. This is why this is an **encouragement experiment**, not a true randomized trial of watching. The randomization is over encouragement; actual viewing is a choice.
+
+<details>
+<summary>**Papers and data source**</summary>
+
+Original evaluation: Bogatz and Ball (1971), *The Second Year of Sesame Street: A Continuing Evaluation*. Data from Gelman, Hill, and Vehtari (2020), *Regression and Other Stories*. See also Angrist, Imbens, and Rubin (1996) for the IV/LATE framework applied to encouragement designs.
+</details>
+
+### 1.2 Load and Explore the Data
+
+```{r sesame-load}
+sesame <- read.csv("sesame.csv")
+cat("Children:", nrow(sesame), "\n")
+```
+
+| Variable | What it measures | Role in IV |
+|----------|-----------------|------------|
+| `encouraged` | Randomly assigned to encouragement group (0/1) | **Instrument (Z)** |
+| `watched` | Actually watched Sesame Street regularly (0/1) | **Treatment (X)** |
+| `y` | Post-test letter recognition score | **Outcome (Y)** |
+| `pretest` | Pre-test letter recognition score | Baseline |
+| `age` | Age in months | Covariate |
+| `site` | Study site (1--5) | Covariate |
+
+How old are these children?
+
+```{r sesame-age}
+ggplot(sesame, aes(x = age)) +
+  geom_histogram(bins = 20, fill = "steelblue", color = "white", alpha = 0.8) +
+  labs(x = "Age (months)", y = "Count",
+       title = "Age Distribution of Children in the Study") +
+  theme_minimal(base_size = 14)
+```
+
+```{r sesame-age-stats}
+cat("Age range:", round(min(sesame$age)), "to", round(max(sesame$age)), "months\n")
+cat("That's roughly", round(min(sesame$age)/12, 1), "to", round(max(sesame$age)/12, 1), "years old\n")
+```
+
+Now let's look at the letter recognition scores --- both **before** and **after** the viewing period:
+
+```{r sesame-hist-both, fig.width=10, fig.height=4.5}
+hist_data <- data.frame(
+  Score = c(sesame$pretest, sesame$y),
+  Test = factor(rep(c("Pre-Test (Before Show)", "Post-Test (After Show)"),
+                    each = nrow(sesame)),
+                levels = c("Pre-Test (Before Show)", "Post-Test (After Show)"))
+)
+
+ggplot(hist_data, aes(x = Score)) +
+  geom_histogram(bins = 25, fill = "steelblue", color = "white", alpha = 0.8) +
+  facet_wrap(~ Test, scales = "free_x") +
+  labs(x = "Letter Recognition Score", y = "Count",
+       title = "Letter Recognition: Before and After Sesame Street") +
+  theme_minimal(base_size = 14)
+```
+
+Both distributions are right-skewed --- some children already knew many letters before the show, while others knew very few. The post-test distribution is shifted rightward overall, but that could be natural maturation, learning from other sources, or Sesame Street. The question is how to isolate the show's contribution.
+
+```{r sesame-pre-post}
+ggplot(sesame, aes(x = pretest, y = y)) +
+  geom_point(alpha = 0.5, color = "grey40") +
+  geom_smooth(method = "lm", se = FALSE, color = "steelblue") +
+  labs(x = "Pre-Test Score", y = "Post-Test Score",
+       title = "Pre-Test vs. Post-Test Letter Recognition",
+       subtitle = "Children who start higher tend to end higher") +
+  theme_minimal(base_size = 14)
+```
+
+Strongly correlated --- children who already knew letters tended to learn even more. This matters for thinking about selection bias.
+
+Now: **how did encouragement translate into actual viewing?**
+
+```{r sesame-compliance}
+prop_enc <- mean(sesame$watched[sesame$encouraged == 1])
+prop_not <- mean(sesame$watched[sesame$encouraged == 0])
+
+compliance_table <- data.frame(
+  Group = c("Not Encouraged", "Encouraged"),
+  N = c(sum(sesame$encouraged == 0), sum(sesame$encouraged == 1)),
+  PctWatched = paste0(round(c(prop_not, prop_enc) * 100, 1), "%")
+)
+kable(compliance_table, row.names = FALSE,
+      col.names = c("Group", "N children", "% Who Watched Regularly"),
+      caption = "Compliance: Did Encouragement Change Viewing Behavior?") %>%
+  kable_styling(bootstrap_options = "striped", full_width = FALSE)
+```
+
+Encouragement substantially increased watching, but over half of the non-encouraged children watched anyway --- Sesame Street was on public TV, and you can't stop people from turning on their television. This gap in watching rates (~36 percentage points) is the **first stage** of our IV, and it's this imperfect compliance that creates the need for IV in the first place.
+
+### 1.3 The Problem: Why Can't We Just Compare?
+
+**Attempt 1: Compare pre-post gains for watchers vs non-watchers.**
+
+We have a pre-test and a post-test. The natural approach: compute how much each child improved (post minus pre), and compare gains for watchers vs non-watchers. If you've taken Session 3, this should remind you of something --- it's basically a **difference-in-differences** design. The "pre" period is before the show, the "post" period is after, and the "treatment" is watching.
+
+```{r sesame-attempt1}
+sesame$gain <- sesame$y - sesame$pretest
+
+mean_w <- mean(sesame$y[sesame$watched == 1])
+mean_nw <- mean(sesame$y[sesame$watched == 0])
+naive_diff <- mean_w - mean_nw
+pre_w <- mean(sesame$pretest[sesame$watched == 1])
+pre_nw <- mean(sesame$pretest[sesame$watched == 0])
+gain_w <- mean(sesame$gain[sesame$watched == 1])
+gain_nw <- mean(sesame$gain[sesame$watched == 0])
+
+attempt1_table <- data.frame(
+  Test = c("Pre-Test (before show)", "Post-Test (after show)", "Gain (Post - Pre)"),
+  Watched = round(c(pre_w, mean_w, gain_w), 1),
+  DidNotWatch = round(c(pre_nw, mean_nw, gain_nw), 1),
+  Difference = round(c(pre_w - pre_nw, naive_diff, gain_w - gain_nw), 1)
+)
+kable(attempt1_table, row.names = FALSE,
+      col.names = c("", "Watched", "Did Not Watch", "Difference"),
+      caption = "Pre-Post Gains by Watching Status") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+Watchers gained ~`r round(gain_w, 0)` points, non-watchers gained ~`r round(gain_nw, 0)`. The difference in gains (~`r round(gain_w - gain_nw, 0)` points) looks like a big effect. If watching had been **randomly assigned**, this would be a valid DiD estimate and we'd be done.
+
+But watching was **not** randomly assigned. Children who chose to watch may simply be faster learners regardless of the show --- more engaged parents, more curiosity, a richer home environment. These factors don't just raise the starting level (the pre-test gap is small), they can also accelerate the **rate** of learning. A bigger gain for watchers might reflect these advantages, not Sesame Street. The DiD parallel trends assumption fails: even without the show, watchers might have improved faster.
+
+**Attempt 2: Use the randomized encouragement instead.**
+
+We can't randomize watching, but we *did* randomize encouragement. Let's do the same exercise --- pre-test, post-test, gains --- but split by **encouraged vs not encouraged**:
+
+```{r sesame-attempt2}
+pre_enc   <- mean(sesame$pretest[sesame$encouraged == 1])
+pre_noenc <- mean(sesame$pretest[sesame$encouraged == 0])
+post_enc   <- mean(sesame$y[sesame$encouraged == 1])
+post_noenc <- mean(sesame$y[sesame$encouraged == 0])
+gain_enc   <- mean(sesame$gain[sesame$encouraged == 1])
+gain_noenc <- mean(sesame$gain[sesame$encouraged == 0])
+
+attempt2_table <- data.frame(
+  Test = c("Pre-Test (before show)", "Post-Test (after show)", "Gain (Post - Pre)"),
+  Encouraged = round(c(pre_enc, post_enc, gain_enc), 1),
+  NotEncouraged = round(c(pre_noenc, post_noenc, gain_noenc), 1),
+  Difference = round(c(pre_enc - pre_noenc, post_enc - post_noenc,
+                        gain_enc - gain_noenc), 1)
+)
+kable(attempt2_table, row.names = FALSE,
+      col.names = c("", "Encouraged", "Not Encouraged", "Difference"),
+      caption = "Pre-Post Gains by Encouragement Status") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+Look at the pre-test row: the difference is tiny. That's randomization at work --- encouraged and non-encouraged children started at the same level. The parallel trends assumption is satisfied **by construction** because the groups were randomly assigned and therefore identical on average.
+
+This IS a valid DiD. The gain difference (~`r round(gain_enc - gain_noenc, 1)` points) is an unbiased causal estimate. But an estimate of *what*? It's the effect of **encouragement**, not the effect of **watching**. And it's much smaller than the ~`r round(gain_w - gain_nw, 0)` points from Attempt 1.
+
+```{r sesame-gains-plot}
+ggplot(sesame, aes(x = factor(encouraged, labels = c("Not Encouraged", "Encouraged")),
+                   y = gain)) +
+  geom_boxplot(fill = c("steelblue", "firebrick"), alpha = 0.6, width = 0.5) +
+  stat_summary(fun = mean, geom = "point", shape = 18, size = 4, color = "black") +
+  labs(x = "", y = "Gain in Letter Recognition (Post - Pre)",
+       title = "Pre-Post Gains by Encouragement Status",
+       subtitle = "Valid DiD (encouragement was random). Black diamond = mean.") +
+  theme_minimal(base_size = 14)
+```
+
+So the encouraged vs not-encouraged comparison gives us a valid causal effect --- like a clean randomized experiment. But the effect of *what*? Of **encouragement**, not of watching. And encouragement only works by getting some children to watch who otherwise wouldn't have. Since not everyone who was encouraged actually watched (and some non-encouraged kids watched anyway), the effect of encouragement is only a **partial, diluted** version of the effect of watching. The encouragement "signal" passes through watching on its way to test scores, but not all of it arrives --- some is lost to non-compliance.
+
+In clinical trial language, this diluted effect is called the **intent-to-treat (ITT)** estimate --- the effect of being *assigned* to treatment, regardless of whether you actually took it.
+
+What we want is the full effect of *actually watching*. If we knew that, say, 36% of children changed their behavior because of encouragement, we could scale the encouragement effect up: divide by 0.36 to recover the full watching effect. That's the **Wald estimator** --- and it's exactly what IV does. But first, let's formalize what makes encouragement a valid instrument.
+
+### 1.4 What Is an Instrument?
+
+An **instrumental variable** is a lever that creates exogenous variation in the treatment. For Sesame Street:
+
+```
+                   Background factors (U)
+                    ↙              ↘
+Encouragement (Z) → Watched (X) → Test Score (Y)
+```
+
+Three conditions make an instrument valid:
+
+1. **Relevance**: The instrument must affect the treatment. Encouragement makes watching more likely. We verified this: a ~36 percentage point gap in watching rates.
+
+2. **Independence**: The instrument must be as-good-as-random --- not correlated with confounders. Here, encouragement was *literally* randomly assigned.
+
+3. **Exclusion restriction**: The instrument affects the outcome **only through** the treatment. Encouragement doesn't directly make children smarter --- it works only by making them more likely to watch.
+
+The third condition is the one we can never test. What if encouraged parents didn't just turn on the TV, but also started reading to their kids more? Then encouragement would affect test scores through a path that bypasses watching, and the instrument would be invalid.
+
+### 1.5 The First Stage and the Wald Estimator
+
+The Wald estimator is built from two regressions. Before computing the ratio, we should check that the denominator --- the first stage --- is actually strong enough to trust.
+
+**The first stage**: Does encouragement predict watching?
+
+```{r sesame-firststage}
+fs <- lm(watched ~ encouraged, data = sesame)
+fs_coef <- coef(fs)["encouraged"]
+
+cat("First stage coefficient:", round(fs_coef, 3), "\n")
+cat("Encouragement raises the probability of watching by",
+    round(fs_coef * 100, 1), "percentage points\n")
+```
+
+Encouragement raises the probability of watching by about 36 percentage points. The Wald estimator will **divide** by this number, so if it were close to zero we'd be in trouble --- dividing by something tiny amplifies noise and makes the estimate wildly unstable. How do we check?
+
+```{r sesame-fstat}
+fs_summary <- summary(fs)
+f_stat_sesame <- fs_summary$fstatistic[1]
+
+fstat_sesame_table <- data.frame(
+  Diagnostic = c("First-stage F-statistic", "Rule of thumb threshold", "Assessment"),
+  Value = c(round(f_stat_sesame, 1), "10",
+            ifelse(f_stat_sesame > 10, "STRONG instrument", "WEAK instrument"))
+)
+kable(fstat_sesame_table, row.names = FALSE,
+      caption = "Is Encouragement a Strong Instrument for Watching?") %>%
+  kable_styling(bootstrap_options = "striped", full_width = FALSE)
+```
+
+As long as the F-statistic is above 10, we're good --- that's the standard rule of thumb for instrument strength. We're well above it here.
+
+<details>
+<summary>**Why F > 10?** (Theory note)</summary>
+
+If the instrument barely predicts the treatment (a "weak instrument"), the first-stage denominator in the Wald ratio is close to zero. Small fluctuations in the numerator get amplified enormously, making the IV estimate wildly unstable. The rule of thumb from Stock and Watson (2017): a first-stage F below 10 signals a **weak instrument** problem, where the cure (IV) may be worse than the disease (endogeneity).
+</details>
+
+Good --- the instrument is strong. Now we can safely compute the ratio.
+
+**The reduced form**: Does encouragement predict test scores?
+
+```{r sesame-reducedform}
+rf <- lm(y ~ encouraged, data = sesame)
+rf_coef <- coef(rf)["encouraged"]
+
+cat("Reduced form coefficient:", round(rf_coef, 3), "\n")
+cat("Encouragement raises test scores by", round(rf_coef, 1), "points\n")
+```
+
+**The Wald estimator**: The effect of encouragement on test scores works entirely through watching (by the exclusion restriction), so:
+
+$$\text{Effect of Z on Y} = \underbrace{\text{Effect of Z on X}}_{\text{first stage}} \times \underbrace{\text{Effect of X on Y}}_{\text{what we want}}$$
+
+Rearranging:
+
+$$\text{Effect of X on Y} = \frac{\text{Effect of Z on Y (reduced form)}}{\text{Effect of Z on X (first stage)}}$$
+
+```{r sesame-wald}
+wald <- rf_coef / fs_coef
+
+wald_table <- data.frame(
+  Step = c("Reduced form (Z → Y)", "First stage (Z → X)", "Wald estimate (RF / FS)"),
+  Coefficient = round(c(rf_coef, fs_coef, wald), 3)
+)
+kable(wald_table, row.names = FALSE,
+      caption = "The Wald Estimator: Building the IV Estimate Step by Step") %>%
+  kable_styling(bootstrap_options = "striped", full_width = FALSE)
+```
+
+The intuition: encouragement raises test scores by about `r round(rf_coef, 1)` points (reduced form), but only shifts the probability of watching by about `r round(fs_coef, 2)` (first stage). Since the `r round(rf_coef, 1)`-point gain was produced by only a `r round(fs_coef * 100, 0)`% increase in watching, the full effect of watching must be much larger: $`r round(rf_coef, 1)` \div `r round(fs_coef, 2)` \approx `r round(wald, 1)`$ points.
+
+### 1.6 Two-Stage Least Squares, by Hand
+
+The Wald estimator works cleanly for a binary instrument. For continuous instruments or models with controls, we use **Two-Stage Least Squares (2SLS)**. Let's walk through the algorithm step by step.
+
+**Stage 1**: Regress the treatment on the instrument.
+
+```{r sesame-2sls-stage1}
+stage1 <- lm(watched ~ encouraged, data = sesame)
+
+alpha_0 <- coef(stage1)["(Intercept)"]
+alpha_1 <- coef(stage1)["encouraged"]
+
+s1_coefs <- summary(stage1)$coefficients
+stage1_table <- data.frame(
+  Term = c("Intercept (α₀)", "encouraged (α₁)"),
+  Estimate = round(s1_coefs[, "Estimate"], 4),
+  SE = round(s1_coefs[, "Std. Error"], 4)
+)
+kable(stage1_table, row.names = FALSE,
+      col.names = c("", "Estimate", "Std. Error"),
+      caption = "Stage 1: lm(watched ~ encouraged)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+The intercept ($\hat{\alpha}_0 \approx$ `r round(alpha_0, 2)`) is the probability of watching when not encouraged. The slope ($\hat{\alpha}_1 \approx$ `r round(alpha_1, 2)`) is how much encouragement raises that probability. So the first stage says: $\hat{X}_i = \hat{\alpha}_0 + \hat{\alpha}_1 \cdot Z_i$. We **predict** each child's watching status using only their encouragement status. Let's compute this by hand --- literally multiplying the coefficient by the data:
+
+```{r sesame-2sls-predict-manual}
+# Manually: predicted watched = intercept + slope × encouraged
+sesame$watched_hat <- alpha_0 + alpha_1 * sesame$encouraged
+```
+
+Let's look at what this did to the data. Here are 10 children --- the instrument ($Z$), their actual behavior ($X$), and the new predicted value ($\hat{X}$):
+
+```{r sesame-2sls-show-data}
+show_rows <- c(1, 2, 3, 5, 7, 10, 12, 15, 18, 20)
+show_df <- data.frame(
+  Child = show_rows,
+  Encouraged = sesame$encouraged[show_rows],
+  Watched = sesame$watched[show_rows],
+  Watched_Hat = round(sesame$watched_hat[show_rows], 2)
+)
+kable(show_df, row.names = FALSE,
+      col.names = c("Child", "Encouraged (Z)", "Watched (X)", "Watched-hat (X̂)"),
+      caption = "The Original Data vs. the Stage 1 Prediction") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+Look at the `Watched` column: it's messy. Some encouraged children didn't watch, some non-encouraged children did. This is the actual, self-selected behavior that we can't use directly.
+
+Now look at `Watched-hat`: it's only **two numbers**. Every non-encouraged child gets the same value (~0.54), every encouraged child gets the same value (~0.90). The prediction threw away all the individual messiness and replaced it with the group average watching rate. $\hat{X}$ is really just a rescaled copy of $Z$ --- it moves only because the instrument moves. That's the whole trick: stage 2 will regress $Y$ on this cleaned-up version of $X$ that contains only instrument-driven variation.
+
+**Stage 2**: Regress the outcome on the *predicted* treatment $\hat{X}$, not the actual treatment $X$:
+
+```{r sesame-2sls-stage2}
+stage2 <- lm(y ~ watched_hat, data = sesame)
+
+s2_coefs <- summary(stage2)$coefficients
+stage2_table <- data.frame(
+  Term = c("Intercept", "watched_hat"),
+  Estimate = round(s2_coefs[, "Estimate"], 2),
+  SE = round(s2_coefs[, "Std. Error"], 2)
+)
+kable(stage2_table, row.names = FALSE,
+      col.names = c("", "Estimate", "Std. Error"),
+      caption = "Stage 2: lm(y ~ watched_hat)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+So stage 2 is just an OLS regression of test scores on `watched_hat`. The slope of ~7.93 says: moving `watched_hat` from one value to the other (from ~0.54 to ~0.90 --- a jump of ~0.36) is associated with a $7.93 \times 0.36 \approx 2.9$ point increase in test scores. That 2.9 is the reduced form effect. The 7.93 is that effect *scaled up* to a full unit change in watching.
+
+Now let's compare. The Wald estimator was `r round(wald, 2)`. The stage 2 slope is `r round(coef(stage2)["watched_hat"], 2)`. They match exactly. Let's see why.
+
+### 1.6.1 Why Does 2SLS Give the Same Answer as Reduced Form / First Stage?
+
+We need one fact from statistics. The OLS slope from regressing $Y$ on some variable $W$ is:
+
+$$\hat{\beta} = \frac{\text{Cov}(W, Y)}{\text{Var}(W)}$$
+
+Quick refresher on these two quantities. Variance measures how spread out $W$ is around its mean:
+
+$$\text{Var}(W) = \frac{1}{n}\sum_{i=1}^{n}(W_i - \bar{W})^2$$
+
+Covariance measures whether $W$ and $Y$ move together --- when $W$ is above its mean, is $Y$ also above its mean?
+
+$$\text{Cov}(W, Y) = \frac{1}{n}\sum_{i=1}^{n}(W_i - \bar{W})(Y_i - \bar{Y})$$
+
+So the slope is: "how much do $W$ and $Y$ move together" divided by "how much does $W$ move on its own." If $W$ varies a lot (large variance), the same covariance corresponds to a smaller per-unit effect. The result is "how much $Y$ changes per unit of $W$."
+
+Now let's write out the two stages explicitly and see how the algebra works.
+
+**The three regressions involved:**
+
+| Regression | Equation | OLS slope |
+|-----------|----------|-----------|
+| First stage | $X_i = \alpha_0 + \alpha_1 Z_i + v_i$ | $\hat{\alpha}_1 = \text{Cov}(Z, X) \;/\; \text{Var}(Z)$ |
+| Reduced form | $Y_i = \gamma_0 + \gamma_1 Z_i + w_i$ | $\hat{\gamma}_1 = \text{Cov}(Z, Y) \;/\; \text{Var}(Z)$ |
+| Stage 2 | $Y_i = \beta_0 + \beta_1 \hat{X}_i + u_i$ | $\hat{\beta}_1 = \text{Cov}(\hat{X}, Y) \;/\; \text{Var}(\hat{X})$ |
+
+The Wald ratio says $\hat{\gamma}_1 / \hat{\alpha}_1$. The 2SLS estimate is $\hat{\beta}_1$. We want to show they're the same.
+
+**The key substitution:** What is $\hat{X}$? From the first stage, $\hat{X}_i = \hat{\alpha}_0 + \hat{\alpha}_1 Z_i$. It's just an intercept plus a slope times $Z$. Adding a constant ($\hat{\alpha}_0$) shifts the mean but doesn't change covariances or variances, so:
+
+$$\text{Cov}(\hat{X},\; Y) = \text{Cov}(\hat{\alpha}_1 Z,\; Y) = \hat{\alpha}_1 \cdot \text{Cov}(Z, Y)$$
+
+$$\text{Var}(\hat{X}) = \text{Var}(\hat{\alpha}_1 Z) = \hat{\alpha}_1^2 \cdot \text{Var}(Z)$$
+
+Now substitute into the stage 2 slope:
+
+$$\hat{\beta}_1 = \frac{\text{Cov}(\hat{X}, Y)}{\text{Var}(\hat{X})} = \frac{\hat{\alpha}_1 \cdot \text{Cov}(Z, Y)}{\hat{\alpha}_1^2 \cdot \text{Var}(Z)}$$
+
+One $\hat{\alpha}_1$ cancels:
+
+$$\hat{\beta}_1 = \frac{\text{Cov}(Z, Y)}{\hat{\alpha}_1 \cdot \text{Var}(Z)}$$
+
+Now swap in $\hat{\alpha}_1 = \text{Cov}(Z, X) / \text{Var}(Z)$ from the first-stage row in the table above:
+
+$$\hat{\beta}_1 = \frac{\text{Cov}(Z, Y)}{\frac{\text{Cov}(Z, X)}{\text{Var}(Z)} \cdot \text{Var}(Z)} = \frac{\text{Cov}(Z, Y)}{\text{Cov}(Z, X)}$$
+
+And the Wald ratio is:
+
+$$\frac{\hat{\gamma}_1}{\hat{\alpha}_1} = \frac{\text{Cov}(Z, Y) / \text{Var}(Z)}{\text{Cov}(Z, X) / \text{Var}(Z)} = \frac{\text{Cov}(Z, Y)}{\text{Cov}(Z, X)}$$
+
+**Same thing.** The $\text{Var}(Z)$ cancels in the Wald ratio, the $\hat{\alpha}_1$ cancels in the 2SLS formula, and both expressions reduce to $\text{Cov}(Z,Y) / \text{Cov}(Z,X)$.
+
+So what's the point of 2SLS if it gives the same answer? With one instrument and no controls, it is literally the same thing. The power of 2SLS is that it **generalizes**: with continuous instruments, multiple instruments, or additional control variables, the same two-step procedure works while the simple Wald ratio does not.
+
+**Important caveat**: the coefficient from this manual procedure is correct, but the **standard errors are wrong**. This matters, so let's understand why.
+
+Standard errors come from the residuals. Bigger residuals → more noise → less precise estimate → bigger SEs. The question is: which residuals?
+
+Our stage 2 regression was `lm(y ~ watched_hat)`. When `lm()` computes residuals, it does what it always does:
+
+$$e_i^{\text{wrong}} = Y_i - \hat{\beta}_0 - \hat{\beta}_1 \cdot \hat{X}_i$$
+
+It uses $\hat{X}$ (the predicted value, either 0.54 or 0.90) because that's the variable it was given. But think about what we're actually estimating. The real model is $Y = \beta_0 + \beta_1 \cdot X + u$ --- the outcome depends on actual watching ($X$, either 0 or 1), not on predicted watching ($\hat{X}$). So the correct residuals should use actual $X$:
+
+$$e_i^{\text{correct}} = Y_i - \hat{\beta}_0 - \hat{\beta}_1 \cdot X_i$$
+
+Let's make this concrete. Take a few children and compute **both** residuals --- the wrong one (using $\hat{X}$) and the correct one (using actual $X$):
+
+```{r sesame-residual-examples}
+beta_0 <- coef(stage2)["(Intercept)"]
+beta_1 <- coef(stage2)["watched_hat"]
+
+# Compute both residuals for every child
+sesame$fitted_wrong   <- beta_0 + beta_1 * sesame$watched_hat
+sesame$fitted_correct <- beta_0 + beta_1 * sesame$watched
+sesame$resid_wrong    <- sesame$y - sesame$fitted_wrong
+sesame$resid_correct  <- sesame$y - sesame$fitted_correct
+
+# Pick children that illustrate the problem: non-compliers
+# An encouraged child who DIDN'T watch (never-taker)
+# A non-encouraged child who DID watch (always-taker)
+# Plus a couple of compliers for comparison
+idx_nt <- which(sesame$encouraged == 1 & sesame$watched == 0)[1]  # never-taker
+idx_at <- which(sesame$encouraged == 0 & sesame$watched == 1)[1]  # always-taker
+idx_c1 <- which(sesame$encouraged == 1 & sesame$watched == 1)[1]  # complier (probably)
+idx_c2 <- which(sesame$encouraged == 0 & sesame$watched == 0)[1]  # complier (probably)
+
+show_idx <- c(idx_nt, idx_at, idx_c1, idx_c2)
+
+resid_examples <- data.frame(
+  Encouraged = sesame$encouraged[show_idx],
+  Watched = sesame$watched[show_idx],
+  WatchedHat = round(sesame$watched_hat[show_idx], 2),
+  Y = round(sesame$y[show_idx], 1),
+  ResidWrong = round(sesame$resid_wrong[show_idx], 1),
+  ResidCorrect = round(sesame$resid_correct[show_idx], 1),
+  Type = c("Never-taker", "Always-taker", "Complier", "Complier")
+)
+kable(resid_examples, row.names = FALSE,
+      col.names = c("Encouraged", "Watched", "Watched-hat",
+                    "Score (Y)", "Resid (wrong)", "Resid (correct)", "Type"),
+      caption = "Wrong vs. Correct Residuals for Four Children") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+Look at the **never-taker** (first row): encouraged but didn't watch. The wrong residual uses $\hat{X} = 0.90$ --- it predicts their score as if they almost certainly watched. But they didn't, so the prediction overshoots and the wrong residual is off. The correct residual uses $X = 0$ (didn't watch), giving a much more appropriate prediction.
+
+The **always-taker** (second row) has the opposite problem: not encouraged but watched anyway. The wrong residual uses $\hat{X} = 0.54$ as if they half-watched, when they fully watched ($X = 1$). The prediction undershoots.
+
+For **compliers** (rows 3 and 4), encouraged = watched, so $\hat{X}$ and $X$ point in the same direction and the two residuals are closer (though still not equal, since 0.90 $\neq$ 1 and 0.54 $\neq$ 0).
+
+Now let's see what this does to the standard errors:
+
+```{r sesame-se-comparison}
+sigma2_wrong   <- sum(sesame$resid_wrong^2) / (nrow(sesame) - 2)
+sigma2_correct <- sum(sesame$resid_correct^2) / (nrow(sesame) - 2)
+
+se_table <- data.frame(
+  Method = c("Manual 2SLS (wrong residuals)", "Proper 2SLS (correct residuals)"),
+  ErrorVariance = round(c(sigma2_wrong, sigma2_correct), 1),
+  ErrorSD = round(c(sqrt(sigma2_wrong), sqrt(sigma2_correct)), 1)
+)
+kable(se_table, row.names = FALSE,
+      col.names = c("Method", "Error variance", "Error std dev"),
+      caption = "How Wrong Residuals Distort the Error Variance") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+The error variance estimate changes because $\hat{X}$ (0.54 or 0.90) disagrees with actual $X$ (0 or 1) for every non-complier. Since the SE of the slope is proportional to $\hat{\sigma}$, getting $\hat{\sigma}^2$ wrong means getting the standard errors wrong. A proper IV package like `ivreg()` knows to use the correct residuals internally.
+
+### 1.7 Proper 2SLS with `ivreg()`
+
+The syntax of `ivreg()` is: `ivreg(outcome ~ endogenous | instrument, data = ...)`. The `|` separates the structural equation (left) from the instruments (right).
+
+```{r sesame-ivreg}
+iv_sesame <- ivreg(y ~ watched | encouraged, data = sesame)
+summary(iv_sesame)
+```
+
+Now let's put everything in one table:
+
+```{r sesame-all-compare}
+# Proper 2SLS SEs
+s_iv <- summary(iv_sesame)$coefficients
+iv_est <- s_iv["watched", "Estimate"]
+iv_se <- s_iv["watched", "Std. Error"]
+
+# Manual 2SLS SEs (wrong!)
+s_manual <- summary(stage2)$coefficients
+manual_se <- s_manual["watched_hat", "Std. Error"]
+
+manual_est <- coef(stage2)["watched_hat"]
+manual_t <- manual_est / manual_se
+manual_p <- 2 * pt(-abs(manual_t), df = nrow(sesame) - 2)
+iv_t <- iv_est / iv_se
+iv_p <- 2 * pt(-abs(iv_t), df = nrow(sesame) - 2)
+
+compare <- data.frame(
+  Method = c("Naive (watchers vs. non-watchers)",
+             "Wald estimator",
+             "Manual 2SLS",
+             "Proper 2SLS (ivreg)"),
+  Estimate = round(c(naive_diff, wald, manual_est, iv_est), 2),
+  SE = c("---", "---", round(manual_se, 2), round(iv_se, 2)),
+  pvalue = c("---", "---",
+             formatC(manual_p, format = "f", digits = 4),
+             formatC(iv_p, format = "f", digits = 4)),
+  Note = c("Biased by selection",
+           "Correct point estimate, no SE",
+           "Correct estimate, WRONG SE and p-value",
+           "Correct estimate, SE, and p-value")
+)
+kable(compare, row.names = FALSE,
+      col.names = c("Method", "Estimate", "SE", "p-value", "Note"),
+      caption = "All Sesame Street Estimates Compared") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+The point estimates all agree (~7.9) across the IV methods. But look at the standard errors and p-values: the manual 2SLS uses the wrong residuals, which distorts both. In this case the conclusion (statistically significant) happens to be the same, but in other applications the wrong SEs could flip a result from significant to insignificant or vice versa. The `ivreg()` numbers are the ones to trust.
+
+### 1.8 Who Are We Estimating the Effect For? (LATE)
+
+The IV estimate of ~7.9 is **not** the average effect for all 240 children. It's the effect for a specific subgroup. To see which subgroup, let's think carefully about what's happening in this experiment.
+
+Every child in the study falls into one of three types based on their *potential behavior* --- what they would do in each scenario:
+
+- **Always-takers**: Children who watch Sesame Street no matter what. Encouraged or not, they're watching. (Maybe their parents love the show, or it's already part of their routine.)
+- **Never-takers**: Children who never watch, even when encouraged. (Maybe the family has no TV, or they prefer to play outside.)
+- **Compliers**: Children who watch *only if encouraged*. Without encouragement, they wouldn't bother --- but the home visits and promotional materials tip them over.
+
+(There's a fourth theoretical type --- "defiers" who do the opposite of encouragement --- but this is implausible here. Why would encouraging a family make them *stop* watching? We assume defiers don't exist.)
+
+The problem is: **we can never observe a child's type directly.** Each child is only in one group. We see what they *did*, not what they *would have done* in the other scenario. But we *can* figure out the proportions using the two groups.
+
+```{r sesame-late-types}
+# In the NON-ENCOURAGED group:
+# - Children who watched anyway = always-takers
+# - Children who didn't watch = never-takers + compliers
+#   (Compliers would have watched IF encouraged, but they weren't, so they didn't)
+
+# In the ENCOURAGED group:
+# - Children who watched = always-takers + compliers
+# - Children who didn't watch = never-takers
+
+n_enc <- sum(sesame$encouraged == 1)
+n_not <- sum(sesame$encouraged == 0)
+watched_enc <- sum(sesame$encouraged == 1 & sesame$watched == 1)
+watched_not <- sum(sesame$encouraged == 0 & sesame$watched == 1)
+nowatch_enc <- sum(sesame$encouraged == 1 & sesame$watched == 0)
+nowatch_not <- sum(sesame$encouraged == 0 & sesame$watched == 0)
+
+type_table <- data.frame(
+  Group = c("Not Encouraged", "Not Encouraged", "Encouraged", "Encouraged"),
+  Behavior = c("Watched", "Did NOT watch", "Watched", "Did NOT watch"),
+  N = c(watched_not, nowatch_not, watched_enc, nowatch_enc),
+  Pct = paste0(round(c(watched_not/n_not, nowatch_not/n_not,
+                        watched_enc/n_enc, nowatch_enc/n_enc) * 100, 1), "%"),
+  WhoAreThey = c("Always-takers",
+                  "Never-takers + Compliers",
+                  "Always-takers + Compliers",
+                  "Never-takers")
+)
+kable(type_table, row.names = FALSE,
+      col.names = c("Group", "Behavior", "N", "%", "Who are they?"),
+      caption = "Figuring Out Who's Who") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+Let's use shorthand: **A** = always-takers, **N** = never-takers, **C** = compliers. The table gives us four numbers. Two of them are clean --- they identify a single type:
+
+- Not encouraged, watched (54.5%) = **A** (they watched without being pushed)
+- Encouraged, didn't watch (9.2%) = **N** (they didn't watch even when pushed)
+
+The other two are mixtures:
+
+- Encouraged, watched (90.8%) = **A + C**
+- Not encouraged, didn't watch (45.5%) = **N + C**
+
+Now the arithmetic is simple:
+
+```{r sesame-late-shares}
+A <- watched_not / n_not       # 54.5%
+N <- nowatch_enc / n_enc       # 9.2%
+
+# From the encouraged group: A + C = 90.8%, and we know A = 54.5%
+C_from_enc <- (watched_enc / n_enc) - A   # (A + C) - A = C
+
+# Check: from the non-encouraged group: N + C = 45.5%, and we know N = 9.2%
+C_from_not <- (nowatch_not / n_not) - N   # (N + C) - N = C
+
+shares_table <- data.frame(
+  Step = c("A (always-takers) = not encouraged, watched",
+           "N (never-takers) = encouraged, didn't watch",
+           "C (compliers) = (A + C) - A = 90.8% - 54.5%",
+           "Check: C = (N + C) - N = 45.5% - 9.2%"),
+  Pct = paste0(round(c(A, N, C_from_enc, C_from_not) * 100, 1), "%")
+)
+kable(shares_table, row.names = FALSE,
+      col.names = c("Step", "Share"),
+      caption = "Recovering Each Type's Share") %>%
+  kable_styling(bootstrap_options = "striped", full_width = FALSE)
+```
+
+Both routes give the same complier share (~`r round(C_from_enc * 100, 1)`%) --- as they must, since A + N + C = 100%. Notice this is exactly the first-stage coefficient: the gap in watching rates between encouraged and non-encouraged groups. That's not a coincidence --- compliers are precisely the children whose behavior the instrument changes.
+
+Now here is the key point: **what does encouragement actually change?**
+
+- Always-takers watch in *both* groups. Encouragement doesn't change their behavior, so it can't change their outcomes.
+- Never-takers don't watch in *either* group. Again, encouragement changes nothing for them.
+- Compliers are the *only* children whose behavior changes because of encouragement. In the encouraged group, they watch. In the non-encouraged group, they don't.
+
+So when we compute the reduced form (the effect of encouragement on test scores), the entire effect is coming from compliers. Always-takers and never-takers contribute zero to the encouragement-vs-no-encouragement difference because their behavior is the same either way.
+
+The IV estimate is therefore the **Local Average Treatment Effect (LATE)** --- the causal effect of watching Sesame Street *specifically for compliers*. These are children who were on the margin: they wouldn't have watched on their own, but a nudge was enough.
+
+This is an important limitation. We learn nothing about:
+
+- **Always-takers**: Maybe Sesame Street helps them even more (they're the most engaged), or maybe less (they were already learning from it before the study).
+- **Never-takers**: Maybe they would have benefited the most (the children furthest from educational resources), but we'll never know because nothing we did changed their behavior.
+
+The IV estimate is "local" to the compliant population --- the ~36% of children who responded to the instrument.
+
+---
+
+## 2. Colonial Origins: Institutions and Economic Development
+
+### 2.1 The Setting
+
+We now jump from preschoolers to one of the biggest questions in economics: **why are some countries rich and others poor?**
+
+Acemoglu, Johnson, and Robinson (2001) --- one of the most cited papers in economics --- argue that **institutions** are the fundamental cause of long-run economic development. Countries with strong property rights, rule of law, and constraints on government tend to be wealthier.
+
+But is this causal? The **chicken-and-egg problem** is severe: rich countries can afford better institutions, and better institutions help countries get rich. OLS regression mixes both directions.
+
+<details>
+<summary>**Three problems IV can solve** (Theory note)</summary>
+
+The Sesame Street example had one clean problem (selection bias). In practice, IV tackles three distinct sources of bias:
+
+1. **Omitted variable bias**: Unobserved confounders (culture, geography, natural resources) affect both institutions and GDP. OLS absorbs these into the error term, biasing the coefficient.
+
+2. **Reverse causality**: Institutions $\to$ GDP, but also GDP $\to$ institutions. OLS conflates both directions.
+
+3. **Measurement error**: "Institutional quality" is hard to measure. The "expropriation risk" index AJR use is a noisy proxy. Measurement error in $X$ biases OLS toward zero --- this is called **attenuation bias**.
+
+A valid instrument addresses all three simultaneously.
+</details>
+
+AJR's instrument is **European settler mortality** --- the death rate among colonial settlers upon arrival in the colonies. The idea: where settlers died at high rates (malaria, yellow fever), they didn't stay to build productive institutions. Instead, they set up extractive regimes. Where the environment was hospitable (New Zealand, Australia), they settled permanently and built institutions that protected property rights. These institutional differences persisted for centuries and shaped current economic performance.
+
+### 2.2 Load and Explore the Data
+
+```{r ajr-load}
+ajr_full <- read.csv("complete.data.iv.csv")
+cat("Full dataset:", nrow(ajr_full), "countries,", ncol(ajr_full), "variables\n")
+
+# AJR's base sample: 64 ex-colonies with settler mortality data
+ajr <- subset(ajr_full, baseco == 1)
+cat("Base sample:", nrow(ajr), "countries\n")
+```
+
+The column names in this dataset are cryptic. Let's rename the key variables to something we can follow:
+
+```{r ajr-rename}
+# Rename for clarity
+ajr$logGDP        <- ajr$logpgp95   # Log GDP per capita in 1995
+ajr$institutions  <- ajr$avexpr     # Protection against expropriation risk (1-10 scale)
+ajr$logMortality  <- ajr$logem4     # Log European settler mortality
+ajr$country       <- ajr$shortnam   # Country abbreviation
+```
+
+| Variable | What it measures | Role in IV |
+|----------|-----------------|------------|
+| `logGDP` | Log GDP per capita in 1995 | **Outcome (Y)** |
+| `institutions` | Protection against expropriation risk, 1985--95 (1--10 scale; higher = better) | **Treatment (X)** |
+| `logMortality` | Log European settler mortality upon arrival in colony | **Instrument (Z)** |
+| `country` | Country abbreviation | For labeling |
+
+```{r ajr-summary}
+cat("Key variable summaries (base sample, N =", nrow(ajr), "):\n\n")
+for (v in c("logGDP", "institutions", "logMortality")) {
+  vals <- ajr[[v]][!is.na(ajr[[v]])]
+  cat(sprintf("  %-15s  min: %5.2f  max: %5.2f  mean: %5.2f  (N=%d)\n",
+              v, min(vals), max(vals), mean(vals), length(vals)))
+}
+```
+
+Let's see how these three variables are distributed across the 64 former colonies:
+
+```{r ajr-hist-all, fig.width=12, fig.height=4}
+hist_data <- data.frame(
+  Value = c(ajr$logGDP, ajr$institutions, ajr$logMortality),
+  Variable = factor(rep(c("Log GDP per Capita (Outcome)",
+                          "Institutional Quality (Treatment)",
+                          "Log Settler Mortality (Instrument)"),
+                        each = nrow(ajr)),
+                    levels = c("Log GDP per Capita (Outcome)",
+                               "Institutional Quality (Treatment)",
+                               "Log Settler Mortality (Instrument)"))
+)
+
+ggplot(hist_data, aes(x = Value)) +
+  geom_histogram(bins = 15, fill = "steelblue", color = "white", alpha = 0.8) +
+  facet_wrap(~ Variable, scales = "free") +
+  labs(x = "", y = "Count",
+       title = "Distributions of the Three Key Variables Across 64 Former Colonies") +
+  theme_minimal(base_size = 13)
+```
+
+Wide variation in all three. GDP ranges from very poor (sub-Saharan Africa) to rich (East Asian Tigers). Institutional quality spans from weak protection (below 4) to strong (above 9). Settler mortality varies enormously --- some colonies were disease traps, others were hospitable.
+
+### 2.3 The Three Key Scatter Plots
+
+With only 64 countries, labeled scatter plots let us see both the overall pattern and individual countries. Each plot tells one part of the IV story.
+
+**Plot 1**: The relationship we want to estimate causally --- do institutions cause growth?
+
+```{r ajr-scatter-main, fig.width=9, fig.height=6}
+ggplot(ajr, aes(x = institutions, y = logGDP, label = country)) +
+  geom_point(color = "steelblue", size = 2) +
+  geom_text_repel(size = 2.5, color = "grey40", max.overlaps = 25) +
+  geom_smooth(method = "lm", se = FALSE, color = "firebrick") +
+  labs(x = "Institutional Quality (Protection Against Expropriation)",
+       y = "Log GDP per Capita (1995)",
+       title = "Better Institutions, Richer Countries",
+       subtitle = "But is this causal? OLS can't tell us.") +
+  theme_minimal(base_size = 14)
+```
+
+Clear positive relationship. But correlation is not causation --- rich countries might build good institutions, not the other way around.
+
+**Plot 2**: The **first stage** --- does the instrument predict the treatment?
+
+```{r ajr-scatter-firststage, fig.width=9, fig.height=6}
+ggplot(ajr, aes(x = logMortality, y = institutions, label = country)) +
+  geom_point(color = "steelblue", size = 2) +
+  geom_text_repel(size = 2.5, color = "grey40", max.overlaps = 25) +
+  geom_smooth(method = "lm", se = FALSE, color = "firebrick") +
+  labs(x = "Log Settler Mortality",
+       y = "Institutional Quality",
+       title = "First Stage: Higher Mortality → Worse Institutions Today",
+       subtitle = "Where settlers died, they built extractive institutions that persisted.") +
+  theme_minimal(base_size = 14)
+```
+
+Strong negative relationship. Colonies where European settlers faced high mortality ended up with weaker institutions centuries later.
+
+**Plot 3**: The **reduced form** --- does the instrument predict the outcome?
+
+```{r ajr-scatter-reducedform, fig.width=9, fig.height=6}
+ggplot(ajr, aes(x = logMortality, y = logGDP, label = country)) +
+  geom_point(color = "steelblue", size = 2) +
+  geom_text_repel(size = 2.5, color = "grey40", max.overlaps = 25) +
+  geom_smooth(method = "lm", se = FALSE, color = "firebrick") +
+  labs(x = "Log Settler Mortality",
+       y = "Log GDP per Capita (1995)",
+       title = "Reduced Form: Higher Mortality → Poorer Countries Today",
+       subtitle = "The instrument predicts the outcome (through the institutional channel).") +
+  theme_minimal(base_size = 14)
+```
+
+All three plots tell a consistent story. Now let's put numbers on these relationships.
+
+### 2.4 OLS: The Naive Approach
+
+```{r ajr-ols}
+ols_ajr <- lm(logGDP ~ institutions, data = ajr)
+s_ols <- summary(ols_ajr)$coefficients
+
+ols_table <- data.frame(
+  Coefficient = c("Intercept", "Institutions"),
+  Estimate = round(s_ols[, "Estimate"], 2),
+  SE = round(s_ols[, "Std. Error"], 2)
+)
+kable(ols_table, row.names = FALSE,
+      caption = paste0("OLS: Effect of Institutions on Log GDP (N = ", nrow(ajr),
+                       ", R² = ", round(summary(ols_ajr)$r.squared, 2), ")")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+OLS says each unit increase in institutional quality raises log GDP by about 0.52. But we don't trust this: reverse causality, omitted variables, and measurement error all bias the estimate.
+
+### 2.5 First Stage: Does Settler Mortality Predict Institutions?
+
+```{r ajr-firststage}
+first_stage <- lm(institutions ~ logMortality, data = ajr)
+summary(first_stage)
+```
+
+```{r ajr-fstat}
+f_stat <- summary(first_stage)$fstatistic[1]
+
+fstat_table <- data.frame(
+  Diagnostic = c("First-stage F-statistic", "Rule of thumb threshold", "Assessment"),
+  Value = c(round(f_stat, 1), "10", ifelse(f_stat > 10, "STRONG instrument", "WEAK instrument"))
+)
+kable(fstat_table, row.names = FALSE,
+      caption = "Instrument Strength: Is Settler Mortality a Good Instrument?") %>%
+  kable_styling(bootstrap_options = "striped", full_width = FALSE)
+```
+
+The F-statistic is well above 10 --- settler mortality has real predictive power over current institutions. Compare this to the Sesame Street case, where the F-statistic was enormous because the instrument was randomized. Here we're working with observational historical data, so the F-statistic is lower but still comfortably strong.
+
+### 2.6 IV Estimates
+
+```{r ajr-iv}
+iv_ajr <- ivreg(logGDP ~ institutions | logMortality, data = ajr)
+summary(iv_ajr)
+```
+
+Now the critical comparison --- OLS vs. IV:
+
+```{r ajr-ols-vs-iv}
+s_iv <- summary(iv_ajr)$coefficients
+
+comparison <- data.frame(
+  Method = c("OLS", "IV (settler mortality)"),
+  Estimate = round(c(s_ols["institutions", "Estimate"],
+                     s_iv["institutions", "Estimate"]), 2),
+  SE = round(c(s_ols["institutions", "Std. Error"],
+               s_iv["institutions", "Std. Error"]), 2)
+)
+kable(comparison, row.names = FALSE,
+      caption = "OLS vs. IV: Effect of Institutions on Log GDP per Capita") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+### 2.7 Why Is IV Larger Than OLS?
+
+The IV estimate (~0.94) is roughly **double** the OLS estimate (~0.52). This might seem counterintuitive: if omitted variables make rich countries *look like* they have good institutions (biasing OLS upward), shouldn't IV be smaller?
+
+AJR argue that the dominant bias is **attenuation from measurement error**. The "risk of expropriation" index is a noisy proxy for true institutional quality. Classical measurement error biases OLS *toward zero*. IV, using only the variation driven by settler mortality, is immune to this measurement error because the instrument is measured separately from the treatment.
+
+How large is the IV effect in practice?
+
+```{r ajr-nigeria-chile}
+iv_coef <- coef(iv_ajr)["institutions"]
+cat("IV coefficient:", round(iv_coef, 2), "\n")
+cat("A 1-unit improvement in institutions raises log GDP by", round(iv_coef, 2), "\n")
+cat("That's roughly a", round((exp(iv_coef) - 1) * 100, 0), "% increase in GDP per capita\n\n")
+
+# The Nigeria-Chile comparison from AJR (2001)
+nga <- ajr[ajr$country == "NGA", ]
+chl <- ajr[ajr$country == "CHL", ]
+if (nrow(nga) > 0 & nrow(chl) > 0) {
+  inst_gap <- chl$institutions - nga$institutions
+  log_gdp_gain <- iv_coef * inst_gap
+  cat("Nigeria's institutional quality:", round(nga$institutions, 2), "\n")
+  cat("Chile's institutional quality:  ", round(chl$institutions, 2), "\n")
+  cat("Gap:", round(inst_gap, 2), "units\n")
+  cat("Predicted GDP multiplier if Nigeria matched Chile:",
+      round(exp(log_gdp_gain), 1), "x\n")
+}
+```
+
+AJR's famous claim: *"Improving Nigeria's institutions to the level of Chile could, in the long run, lead to as much as a 7-fold increase in Nigeria's income."*
+
+### 2.8 The Exclusion Restriction: The Untestable Assumption
+
+Can we test whether settler mortality affects GDP **only** through institutions? **No.** The exclusion restriction is an assumption --- the most important and most debated assumption of any IV analysis.
+
+What could violate it? Critics (notably Albouy 2012) argued:
+
+- **Persistent disease environments**: The tropical diseases that killed settlers might still hamper economic activity today --- directly, not only through institutions. Malaria-prone regions may be poor *because of malaria*, not because of weak institutions.
+
+- **AJR's response**: They specifically use **settler mortality**, not native mortality or current disease prevalence. The diseases that killed Europeans (malaria, yellow fever) affected natives far less due to long-term exposure and immunity. Moreover, modern medicine has substantially reduced these diseases as economic factors.
+
+This debate (Albouy 2012 vs. AJR 2012 reply) is far from settled. But it illustrates a crucial point: **the credibility of any IV analysis ultimately rests on a story you must argue, not a test you can run.**
+
+---
+
+## 3. Globalization and Brexit
+
+### 3.1 The Setting
+
+In June 2016, the United Kingdom voted 52% to 48% to leave the European Union. What caused Brexit? Immigration fears? Economic inequality? Cultural anxiety?
+
+Colantone and Stanig (2018) investigated a specific economic channel: the **Chinese import shock**. Between the 1980s and early 2000s, Chinese imports to the UK grew eightfold. This growth hit different regions differently --- areas with more textile or plastics manufacturing were more exposed. Did this trade shock drive the Leave vote?
+
+<details>
+<summary>**Political context** (Background)</summary>
+
+The Brexit referendum was preceded by a period of significant economic and social change in the UK. The rise of UKIP (the UK Independence Party), the 2008 financial crisis, and austerity policies all played roles. Colantone and Stanig isolate the trade channel specifically, asking whether regions that lost more manufacturing jobs to Chinese competition voted more strongly for Leave --- controlling for these other factors.
+</details>
+
+### 3.2 Load and Explore the Data
+
+```{r brexit-load}
+brexit <- as.data.frame(read_dta("Replication_DB_Regional.dta"))
+cat("Regions:", nrow(brexit), "\n")
+cat("Variables:", ncol(brexit), "\n")
+```
+
+Key variables for our analysis:
+
+| Variable | What it measures | Role in IV |
+|----------|-----------------|------------|
+| `leave_share` | % Leave votes in the 2016 referendum | **Outcome (Y)** |
+| `import_shock` | Chinese import competition to UK regions | **Treatment (X)** |
+| `instrument_for_shock` | Import shock using Chinese exports to the US | **Instrument (Z)** |
+| `immigrant_share` | Share of foreign-born residents | For comparison |
+| `nuts1` | NUTS-1 region (11 broad regions) | Fixed effects |
+| `nuts2` | NUTS-2 region (39 sub-regions) | For clustering |
+
+```{r brexit-summary}
+cat("Variable summaries:\n\n")
+for (v in c("leave_share", "import_shock", "instrument_for_shock", "immigrant_share")) {
+  vals <- brexit[[v]][!is.na(brexit[[v]])]
+  cat(sprintf("  %-25s  min: %6.2f  max: %6.2f  mean: %6.2f\n",
+              v, min(vals), max(vals), mean(vals)))
+}
+```
+
+```{r brexit-leave-stats}
+cat("Regions voting Leave (>50%):", sum(brexit$leave_share > 50),
+    "out of", nrow(brexit), "\n")
+cat("Leave share range:", round(min(brexit$leave_share), 1), "% to",
+    round(max(brexit$leave_share), 1), "%\n")
+cat("Import shock range:", round(min(brexit$import_shock), 2), "to",
+    round(max(brexit$import_shock), 2), "\n")
+```
+
+Let's see the distributions of the outcome and the treatment side by side:
+
+```{r brexit-hist-both, fig.width=10, fig.height=4.5}
+hist_data <- data.frame(
+  Value = c(brexit$leave_share, brexit$import_shock),
+  Variable = factor(rep(c("Leave Vote Share (%)", "Chinese Import Shock"),
+                        each = nrow(brexit)),
+                    levels = c("Leave Vote Share (%)", "Chinese Import Shock"))
+)
+
+ggplot(hist_data, aes(x = Value)) +
+  geom_histogram(bins = 20, fill = "steelblue", color = "white", alpha = 0.8) +
+  facet_wrap(~ Variable, scales = "free") +
+  labs(x = "", y = "Number of Regions",
+       title = "Brexit Leave Vote and Chinese Import Exposure Across UK Regions") +
+  theme_minimal(base_size = 13)
+```
+
+The Leave vote varied enormously --- from about 21% to over 72%. The import shock is right-skewed: most regions had moderate exposure, but some manufacturing-heavy areas were hit much harder.
+
+### 3.3 Immigration vs. Trade: What Actually Drove Brexit?
+
+The popular narrative blamed immigration for Brexit. Let's check:
+
+```{r brexit-immigration}
+ggplot(brexit, aes(x = immigrant_share, y = leave_share)) +
+  geom_point(color = "steelblue", alpha = 0.6, size = 2) +
+  geom_smooth(method = "lm", se = FALSE, color = "firebrick") +
+  labs(x = "Share of Foreign-Born Residents", y = "Leave Vote Share (%)",
+       title = "Immigration and Brexit: A Surprising Non-Result",
+       subtitle = "Areas with MORE immigrants voted to REMAIN") +
+  theme_minimal(base_size = 14)
+```
+
+The relationship is **negative** --- regions with more immigrants actually voted *against* Leave. This contradicts the popular narrative, though there's a big confounder: **London**. London is cosmopolitan, has high immigration, and voted strongly Remain for many reasons beyond immigration.
+
+Now the trade channel:
+
+```{r brexit-trade}
+ggplot(brexit, aes(x = import_shock, y = leave_share)) +
+  geom_point(color = "steelblue", alpha = 0.6, size = 2) +
+  geom_smooth(method = "lm", se = FALSE, color = "firebrick") +
+  labs(x = "Chinese Import Shock", y = "Leave Vote Share (%)",
+       title = "Trade Competition and Brexit",
+       subtitle = "Regions hit harder by Chinese imports voted more for Leave") +
+  theme_minimal(base_size = 14)
+```
+
+Clear positive relationship: regions more exposed to Chinese import competition were more likely to vote Leave. The deindustrialization from trade competition, not immigration per se, appears to be the economic driver.
+
+### 3.4 The Bartik / Shift-Share Instrument
+
+Even with the import shock, we might worry about endogeneity: maybe regions that were already economically struggling both lost manufacturing jobs *and* voted Leave for other reasons (e.g., fiscal austerity, demographic decline). Colantone and Stanig address this with an instrument.
+
+<details>
+<summary>**What is a Bartik instrument?** (Theory note)</summary>
+
+A **shift-share** (or Bartik) instrument combines two ingredients:
+
+1. **Shares**: The *historical* composition of local industry. For example, Leicester historically had a large textile sector.
+
+2. **Shifts**: *Global* changes in trade. For example, China's textile exports grew dramatically worldwide.
+
+The instrument multiplies historical industry shares $\times$ aggregate import growth. The idea: Leicester's concentration in textiles is a legacy of history (exogenous to 2016 politics), and China's export boom was driven by China's own development (exogenous to UK regions).
+
+Colantone and Stanig go further: instead of using Chinese imports to the *UK*, they use Chinese imports to the **United States** as the shift component. This removes any direct link between UK regional politics and the trade measure.
+</details>
+
+Let's verify the first stage --- does the US-based instrument predict the UK import shock?
+
+```{r brexit-firststage}
+ggplot(brexit, aes(x = instrument_for_shock, y = import_shock)) +
+  geom_point(color = "steelblue", alpha = 0.6, size = 2) +
+  geom_smooth(method = "lm", se = FALSE, color = "firebrick") +
+  labs(x = "Instrument (US-Based Import Shock)", y = "UK Import Shock",
+       title = "First Stage: US-Based Shock Predicts UK Shock",
+       subtitle = "The instrument is relevant --- China's rise affected both countries") +
+  theme_minimal(base_size = 14)
+```
+
+Strong positive relationship. China's export growth to the US is a good predictor of its export growth to the UK --- because the same Chinese productivity boom drove both.
+
+### 3.5 OLS and IV Estimates
+
+The original paper uses NUTS-1 regional fixed effects (to absorb broad regional differences) and clusters standard errors at the NUTS-2 level (because regions within the same NUTS-2 area are not independent). The `estimatr` package handles both:
+
+```{r brexit-models}
+mod_ols <- lm_robust(leave_share ~ import_shock + factor(nuts1),
+                     data = brexit, clusters = nuts2, se_type = "stata")
+
+mod_iv <- iv_robust(leave_share ~ import_shock + factor(nuts1) |
+                      instrument_for_shock + factor(nuts1),
+                    data = brexit, clusters = nuts2, se_type = "stata")
+```
+
+```{r brexit-results}
+brexit_results <- data.frame(
+  Method = c("OLS (with region FE)", "IV (with region FE)"),
+  Estimate = round(c(mod_ols$coefficients["import_shock"],
+                     mod_iv$coefficients["import_shock"]), 2),
+  SE = round(c(mod_ols$std.error["import_shock"],
+               mod_iv$std.error["import_shock"]), 2),
+  N = nrow(brexit),
+  Clusters = length(unique(brexit$nuts2))
+)
+kable(brexit_results, row.names = FALSE,
+      caption = "Effect of Chinese Import Shock on Leave Vote Share (%)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+A striking result: OLS and IV give **very similar** estimates. Both suggest that a one-unit increase in import shock raises the Leave vote share by roughly 12--13 percentage points. The fact that IV barely changes the estimate is actually *good news* --- it suggests the import shock variable was already relatively exogenous, supporting the authors' identification strategy.
+
+### 3.6 Sociotropic Voting
+
+A final insight from the paper: Colantone and Stanig also analyzed individual-level survey data and found that **regardless of personal employment status or occupation**, people in harder-hit regions were more likely to vote Leave. Even employed professionals in manufacturing-heavy regions leaned Leave.
+
+This suggests **sociotropic voting** --- people react to the economic conditions in their community, not just their personal economic circumstances. The political backlash against globalization is collective, not individual.
+
+And a final irony the authors note: leaving the EU could lead to *more* Chinese imports (without EU trade protections), potentially worsening the very shock that helped trigger Brexit.
+
+---
+
+## 4. Wrapping Up
+
+### The IV Toolkit
+
+Today we learned a single technique --- **instrumental variables** --- but applied it in three very different settings. The mechanics are always the same (find a lever, check the first stage, divide reduced form by first stage), but the credibility of the instrument depends entirely on the story behind it:
+
+| Case | Instrument | Why Plausibly Valid? |
+|------|-----------|---------------------|
+| Sesame Street | Random encouragement | Literally randomized in an experiment |
+| Colonial Origins | Settler mortality | Historical accident, centuries removed from outcome |
+| Brexit | Bartik shift-share (US-based) | China's rise driven by internal factors; US exposure proxies global shock |
+
+### Where IV Sits Among Causal Methods
+
+| Session | Method | Key Assumption | Achilles Heel |
+|---------|--------|---------------|---------------|
+| 2 | Matching | Selection on observables | Unobserved confounders |
+| 3 | Diff-in-Diff | Parallel trends | Pre-trends may diverge |
+| 4 | Synthetic Control | Weighted donors reconstruct counterfactual | Donor pool quality |
+| 5 | RDD | Continuity at cutoff | Manipulation, bandwidth sensitivity |
+| **6** | **IV** | **Exclusion restriction** | **Cannot be tested --- must be argued** |
+
+### The Exclusion Restriction: IV's Achilles Heel
+
+You can test instrument **relevance** (the F-statistic). You can check **independence** somewhat (balance tests, checking the instrument isn't correlated with observables). But you **cannot test** whether the instrument affects the outcome only through the treatment. That's a substantive argument, not a statistical one.
+
+This is why IV papers live or die by the quality of their narrative. The Sesame Street instrument is nearly bulletproof (randomized encouragement). AJR's settler mortality has been debated for over two decades. In every case, the reader must judge: *is the story convincing enough to believe the exclusion restriction?*
+
+### What We Learned Today
+
+- **Sesame Street**: The simplest IV setting. Random encouragement instruments for voluntary TV watching. We built up from the Wald estimator to manual 2SLS to proper `ivreg()`. The IV estimate (~7.9 points) is credible because the instrument was randomized, but applies only to compliers (LATE).
+
+- **Colonial Origins (AJR 2001)**: IV tackles reverse causality and measurement error. Settler mortality from centuries ago instruments for current institutions. The IV estimate is roughly double OLS --- mostly because measurement error biases OLS downward. The exclusion restriction requires a historical argument that has been debated for two decades.
+
+- **Brexit (Colantone & Stanig 2018)**: A modern shift-share instrument. Chinese imports to the US instrument for the trade shock to UK regions. IV and OLS agree, suggesting the shock was already quasi-exogenous. Crucially, it was trade competition --- not immigration --- that predicted the Leave vote.

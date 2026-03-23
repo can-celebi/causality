@@ -237,6 +237,278 @@
                 </p>
             </section>
 
+            <!-- Session 6 Download Section -->
+            <section class="download-section">
+                <h2>Session 6: Instrumental Variables</h2>
+                <p>When you can't randomize, find a lever</p>
+                <button id="session6-btn" class="download-btn" onclick="launchCelebration()" style="border: none;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    Download Session 6 Materials (ZIP)
+                </button>
+                <p class="file-info">R Markdown, rendered HTML, datasets, and reference papers (~5MB)</p>
+                <p style="color: #666; margin-top: 20px; font-size: 0.95rem;">
+                    <strong>Topics:</strong> Instrumental variables (IV), Wald estimator, two-stage least squares (2SLS) by hand and with ivreg(), first-stage F-statistic, compliers and LATE, exclusion restriction, Bartik shift-share instruments, attenuation bias from measurement error, intent-to-treat vs treatment effects, correct vs wrong 2SLS standard errors.
+                </p>
+                <p style="color: #666; margin-top: 10px; font-size: 0.95rem;">
+                    <strong>Stories:</strong> "Does Sesame Street make children smarter?" — An encouragement experiment with imperfect compliance. "Do institutions cause economic development?" — Acemoglu, Johnson & Robinson (2001) use settler mortality as an instrument. "Did Chinese imports cause Brexit?" — Colantone & Stanig (2018) use a Bartik instrument to link trade shocks to the Leave vote.
+                </p>
+            </section>
+
+            <!-- Celebration overlay -->
+            <div id="celebration-overlay" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; pointer-events:none; z-index:9999; overflow:hidden;">
+                <div id="celebration-text" style="display:none; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); text-align:center; z-index:10001; pointer-events:none;"></div>
+            </div>
+            <!-- Canvas for fireworks -->
+            <canvas id="fireworks-canvas" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:9998; pointer-events:none;"></canvas>
+
+            <script>
+            function launchCelebration() {
+                var btn = document.getElementById('session6-btn');
+                if (btn.dataset.launched === 'true') return;
+                btn.dataset.launched = 'true';
+                btn.style.opacity = '0.6';
+                btn.style.pointerEvents = 'none';
+                btn.innerHTML = '<span style="font-size:1.5rem;">&#127881;</span> Final session! Downloading in 12...';
+
+                var overlay = document.getElementById('celebration-overlay');
+                overlay.style.display = 'block';
+                var celebText = document.getElementById('celebration-text');
+
+                // Setup fireworks canvas
+                var canvas = document.getElementById('fireworks-canvas');
+                canvas.style.display = 'block';
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                var ctx = canvas.getContext('2d');
+                var fireworkParticles = [];
+                var fireworksActive = true;
+
+                var colors = ['#667eea','#764ba2','#ff6b6b','#ffd93d','#6bcb77','#4d96ff','#ff6f91','#ff9671','#e91e63','#00bcd4','#ff5722','#8bc34a','#ffeb3b','#9c27b0'];
+                var emojis = ['\u{1F388}','\u{1F389}','\u{1F38A}','\u{1F38B}','\u{2B50}','\u{1F386}','\u{1F387}','\u{2728}','\u{1F31F}','\u{1F680}','\u{1F3C6}','\u{1F4AF}','\u{2764}\uFE0F','\u{1F60E}','\u{1F973}'];
+
+                // --- WAVE 1: Massive initial confetti burst (400 pieces) ---
+                for (var i = 0; i < 400; i++) {
+                    spawnConfetti(overlay, colors, Math.random() * 800);
+                }
+
+                // --- WAVE 2: Continuous confetti rain ---
+                var confettiInterval = setInterval(function() {
+                    for (var j = 0; j < 30; j++) {
+                        spawnConfetti(overlay, colors, 0);
+                    }
+                }, 300);
+
+                // --- Balloons and emojis rising from bottom ---
+                for (var b = 0; b < 60; b++) {
+                    spawnBalloon(overlay, emojis, Math.random() * 11000);
+                }
+
+                // --- Side cannons: confetti bursting from left and right ---
+                for (var s = 0; s < 80; s++) {
+                    spawnSideCannon(overlay, colors, Math.random() * 10000, s % 2 === 0);
+                }
+
+                // --- Fireworks on canvas ---
+                function spawnFirework() {
+                    if (!fireworksActive) return;
+                    var x = Math.random() * canvas.width;
+                    var y = Math.random() * canvas.height * 0.6;
+                    var color = colors[Math.floor(Math.random() * colors.length)];
+                    var numSparks = 30 + Math.floor(Math.random() * 40);
+                    for (var p = 0; p < numSparks; p++) {
+                        var angle = (Math.PI * 2 * p) / numSparks + (Math.random() - 0.5) * 0.3;
+                        var speed = 1.5 + Math.random() * 3;
+                        fireworkParticles.push({
+                            x: x, y: y,
+                            vx: Math.cos(angle) * speed,
+                            vy: Math.sin(angle) * speed,
+                            life: 60 + Math.random() * 40,
+                            maxLife: 100,
+                            color: color,
+                            size: 2 + Math.random() * 2
+                        });
+                    }
+                }
+
+                var fireworkTimer = setInterval(function() {
+                    spawnFirework();
+                    if (Math.random() > 0.5) spawnFirework(); // sometimes double burst
+                }, 400);
+
+                function animateFireworks() {
+                    if (!fireworksActive) { ctx.clearRect(0, 0, canvas.width, canvas.height); return; }
+                    ctx.fillStyle = 'rgba(0,0,0,0.08)';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    for (var i = fireworkParticles.length - 1; i >= 0; i--) {
+                        var p = fireworkParticles[i];
+                        p.x += p.vx;
+                        p.y += p.vy;
+                        p.vy += 0.03; // gravity
+                        p.life--;
+                        var alpha = p.life / p.maxLife;
+                        ctx.globalAlpha = alpha;
+                        ctx.fillStyle = p.color;
+                        ctx.beginPath();
+                        ctx.arc(p.x, p.y, p.size * alpha, 0, Math.PI * 2);
+                        ctx.fill();
+                        // sparkle trail
+                        if (Math.random() > 0.7) {
+                            ctx.fillStyle = '#fff';
+                            ctx.beginPath();
+                            ctx.arc(p.x - p.vx, p.y - p.vy, p.size * 0.5 * alpha, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                        if (p.life <= 0) fireworkParticles.splice(i, 1);
+                    }
+                    ctx.globalAlpha = 1;
+                    requestAnimationFrame(animateFireworks);
+                }
+                animateFireworks();
+
+                // --- Celebration text flash ---
+                var messages = [
+                    {text: '&#127881; CONGRATULATIONS! &#127881;', size: '3rem', color: '#ffd93d'},
+                    {text: 'You completed all 6 sessions!', size: '1.8rem', color: '#fff'},
+                    {text: '&#127942; Causal Inference Master &#127942;', size: '2.2rem', color: '#6bcb77'},
+                ];
+                setTimeout(function() {
+                    celebText.style.display = 'block';
+                    celebText.innerHTML = '<div style="font-size:'+messages[0].size+';color:'+messages[0].color+';font-weight:800;text-shadow:0 0 30px rgba(0,0,0,0.5),0 0 60px rgba(102,126,234,0.5);animation:textPop 0.5s ease-out;">' + messages[0].text + '</div>';
+                }, 2000);
+                setTimeout(function() {
+                    celebText.innerHTML += '<div style="font-size:'+messages[1].size+';color:'+messages[1].color+';font-weight:600;text-shadow:0 0 20px rgba(0,0,0,0.5);margin-top:10px;animation:textPop 0.5s ease-out;">' + messages[1].text + '</div>';
+                }, 5000);
+                setTimeout(function() {
+                    celebText.innerHTML += '<div style="font-size:'+messages[2].size+';color:'+messages[2].color+';font-weight:700;text-shadow:0 0 20px rgba(0,0,0,0.4);margin-top:15px;animation:textPop 0.5s ease-out;">' + messages[2].text + '</div>';
+                }, 9000);
+
+                // --- Screen flash on each countdown ---
+                var flashOverlay = document.createElement('div');
+                flashOverlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:9997;pointer-events:none;opacity:0;transition:opacity 0.15s;';
+                document.body.appendChild(flashOverlay);
+
+                // Countdown
+                var count = 11;
+                var timer = setInterval(function() {
+                    if (count > 0) {
+                        btn.innerHTML = '<span style="font-size:1.5rem;">&#127881;</span> Final session! Downloading in ' + count + '...';
+                        // Flash effect
+                        flashOverlay.style.background = colors[Math.floor(Math.random() * colors.length)];
+                        flashOverlay.style.opacity = '0.15';
+                        setTimeout(function() { flashOverlay.style.opacity = '0'; }, 150);
+                        count--;
+                    } else {
+                        clearInterval(timer);
+                        btn.innerHTML = '<span style="font-size:1.5rem;">&#127881;</span> Here you go!';
+                        window.location.href = 'https://download-directory.github.io/?url=https://github.com/can-celebi/causality/tree/main/Session%206';
+                        // Grand finale burst
+                        for (var f = 0; f < 200; f++) { spawnConfetti(overlay, colors, Math.random() * 500); }
+                        for (var g = 0; g < 5; g++) { spawnFirework(); }
+                        // Clean up
+                        setTimeout(function() {
+                            clearInterval(confettiInterval);
+                            clearInterval(fireworkTimer);
+                            fireworksActive = false;
+                            overlay.style.display = 'none';
+                            overlay.innerHTML = '<div id="celebration-text" style="display:none; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); text-align:center; z-index:10001; pointer-events:none;"></div>';
+                            canvas.style.display = 'none';
+                            ctx.clearRect(0, 0, canvas.width, canvas.height);
+                            if (flashOverlay.parentNode) flashOverlay.parentNode.removeChild(flashOverlay);
+                            btn.style.opacity = '1';
+                            btn.style.pointerEvents = 'auto';
+                            btn.dataset.launched = 'false';
+                            btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> Download Session 6 Materials (ZIP)';
+                        }, 4000);
+                    }
+                }, 1000);
+            }
+
+            function spawnConfetti(overlay, colors, delay) {
+                setTimeout(function() {
+                    var el = document.createElement('div');
+                    var color = colors[Math.floor(Math.random() * colors.length)];
+                    var left = Math.random() * 100;
+                    var size = 5 + Math.random() * 10;
+                    var duration = 2 + Math.random() * 3;
+                    var drift = (Math.random() - 0.5) * 200;
+                    var shapes = ['square','circle','strip','star'];
+                    var shape = shapes[Math.floor(Math.random() * shapes.length)];
+                    var w = size, h = shape === 'strip' ? size * 3.5 : size;
+                    var radius = shape === 'circle' ? '50%' : shape === 'star' ? '2px' : '2px';
+                    var extraCSS = '';
+                    if (shape === 'star') { w = 0; h = 0; extraCSS = 'border-left:'+size/2+'px solid transparent;border-right:'+size/2+'px solid transparent;border-bottom:'+size+'px solid '+color+';background:transparent;'; }
+                    el.style.cssText = 'position:absolute;left:'+left+'vw;top:-5vh;width:'+w+'px;height:'+h+'px;background:'+color+';opacity:0.9;z-index:10000;pointer-events:none;border-radius:'+radius+';'+extraCSS;
+                    el.style.animation = 'confettiFall '+duration+'s linear forwards';
+                    el.style.setProperty('--drift', drift + 'px');
+                    el.style.animationDelay = '0s';
+                    overlay.appendChild(el);
+                    setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, (duration + 1) * 1000);
+                }, delay);
+            }
+
+            function spawnBalloon(overlay, emojis, delay) {
+                setTimeout(function() {
+                    var el = document.createElement('div');
+                    var left = Math.random() * 100;
+                    var size = 24 + Math.random() * 30;
+                    var duration = 3 + Math.random() * 4;
+                    var emoji = emojis[Math.floor(Math.random() * emojis.length)];
+                    el.style.cssText = 'position:absolute;left:'+left+'vw;top:110vh;font-size:'+size+'px;z-index:10000;pointer-events:none;';
+                    el.textContent = emoji;
+                    el.style.animation = 'balloonRise '+duration+'s ease-out forwards';
+                    el.style.animationDelay = '0s';
+                    overlay.appendChild(el);
+                    setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, (duration + 1) * 1000);
+                }, delay);
+            }
+
+            function spawnSideCannon(overlay, colors, delay, fromLeft) {
+                setTimeout(function() {
+                    var el = document.createElement('div');
+                    var color = colors[Math.floor(Math.random() * colors.length)];
+                    var size = 6 + Math.random() * 8;
+                    var duration = 1.5 + Math.random() * 2;
+                    var startX = fromLeft ? -2 : 102;
+                    var startY = 60 + Math.random() * 30;
+                    el.style.cssText = 'position:absolute;left:'+startX+'vw;top:'+startY+'vh;width:'+size+'px;height:'+size+'px;background:'+color+';opacity:0.9;z-index:10000;pointer-events:none;border-radius:50%;';
+                    el.style.animation = (fromLeft ? 'cannonRight' : 'cannonLeft') + ' ' + duration + 's ease-out forwards';
+                    overlay.appendChild(el);
+                    setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, (duration + 1) * 1000);
+                }, delay);
+            }
+            </script>
+
+            <style>
+            @keyframes confettiFall {
+                0% { transform: translateY(0) translateX(0) rotate(0deg) scale(1); opacity: 1; }
+                50% { opacity: 0.9; }
+                100% { transform: translateY(120vh) translateX(var(--drift, 50px)) rotate(1080deg) scale(0.5); opacity: 0; }
+            }
+            @keyframes balloonRise {
+                0% { transform: translateY(0) scale(0.3) rotate(0deg); opacity: 0; }
+                8% { opacity: 1; transform: translateY(-10vh) scale(1) rotate(-5deg); }
+                50% { transform: translateY(-60vh) scale(1.05) rotate(5deg); }
+                100% { transform: translateY(-140vh) scale(1.1) rotate(-3deg); opacity: 0; }
+            }
+            @keyframes cannonRight {
+                0% { transform: translate(0, 0) scale(1); opacity: 1; }
+                100% { transform: translate(60vw, -40vh) scale(0.3); opacity: 0; }
+            }
+            @keyframes cannonLeft {
+                0% { transform: translate(0, 0) scale(1); opacity: 1; }
+                100% { transform: translate(-60vw, -40vh) scale(0.3); opacity: 0; }
+            }
+            @keyframes textPop {
+                0% { transform: scale(0.3); opacity: 0; }
+                60% { transform: scale(1.15); }
+                100% { transform: scale(1); opacity: 1; }
+            }
+            </style>
+
             <!-- AI Assistants Section -->
             <section class="download-section">
                 <h2>AI Assistants for R Help</h2>
